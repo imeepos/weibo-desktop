@@ -1,50 +1,156 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report:
+  Version Change: [none] → 1.0.0
+  New Version Rationale: Initial constitution establishment with five core principles
 
-## Core Principles
+  Modified Principles:
+    - All principles new (initial version)
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+  Added Sections:
+    - Core Principles (5 principles)
+    - Development Approach
+    - Code Review Standards
+    - Governance
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+  Removed Sections:
+    - None (initial version)
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+  Templates Status:
+    ✅ plan-template.md: Constitution Check section present, aligns with principles
+    ✅ spec-template.md: No conflicts, requirements-focused approach aligns with clarity principle
+    ✅ tasks-template.md: TDD approach aligns with error handling philosophy
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+  Deferred Items:
+    - RATIFICATION_DATE set to initial commit date (2025-01-30, estimated from git log)
+-->
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+# Desktop 项目章程
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## 核心原则
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### 一、存在即合理 (Existence Implies Necessity)
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+每个类、属性、方法、函数和文件都必须有不可替代的存在理由。每一行代码都服务于独特而本质的目的。在添加任何内容之前，必须问："这绝对必要吗？它是否服务于不可替代的目的？"如果某物可以在不损失功能或清晰度的情况下被移除，就必须移除它。
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+**不可协商的规则**:
+- 禁止冗余代码和功能
+- 每个抽象必须证明其存在价值
+- 代码审查必须质疑每个元素的存在理由
+- 重构时优先删除而非添加
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+**理由**: 简约是复杂性的对立面。多余的代码增加认知负担、维护成本和错误表面。只有每个元素都不可或缺时，系统才能达到真正的优雅。
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+### 二、优雅即简约 (Elegance is Simplicity)
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+代码应当自我阐述，通过深思熟虑的结构和命名讲述其故事。变量和函数名是诗歌：`useSession` 不仅是标识符，更是叙事的开端。名称应揭示意图、讲述故事、引导读者穿越代码之旅。优先考虑清晰度和表达力而非简洁性。
+
+**不可协商的规则**:
+- 禁止无意义的注释——代码本身讲述故事
+- 命名必须揭示意图并讲述故事
+- 代码应像散文一样阅读——清晰、有目的、流畅
+- 拒绝需要注释才能理解的代码结构
+
+**理由**: 代码被阅读的次数远多于被编写的次数。自文档化的代码减少认知摩擦，使维护者能够快速理解意图，减少误解导致的缺陷。
+
+### 三、性能即艺术 (Performance is Art)
+
+优化不仅是为了速度，更是为了执行的优雅。性能改进应增强而非损害代码美感。追求算法优雅——最高效的解决方案往往也是最美丽的。在性能与可维护性及清晰度之间寻求平衡。
+
+**不可协商的规则**:
+- 性能优化必须保持或提升代码可读性
+- 优先算法改进而非微优化
+- 性能目标必须可测量和可验证
+- 避免过早优化，但设计时考虑性能影响
+
+**理由**: 优雅的算法自然高效。通过优先考虑算法清晰度和正确性，我们创建既快速又可维护的系统。丑陋的优化会产生技术债务。
+
+### 四、错误处理如为人处世的哲学 (Error Handling as Life Philosophy)
+
+每个错误都是完善和成长的机会。优雅地、有尊严地、有目的地处理错误。错误消息应引导和教育，而非仅仅报告。将错误用作架构改进的信号。设计使系统更具韧性和优雅的错误处理。
+
+**不可协商的规则**:
+- 错误必须被捕获、记录并优雅处理
+- 错误消息必须有意义、提供上下文且可操作
+- 失败路径与成功路径一样重要
+- 错误应触发架构反思，而非仅仅修补
+
+**理由**: 系统如何失败定义了其质量。周到的错误处理将灾难性故障转变为可恢复的事件，同时为操作员提供诊断和修复问题的洞察。
+
+### 五、日志是思想的表达 (Logs Express Thought)
+
+日志应讲述系统的故事，而非使其混乱。每个日志条目都服务于目的：调试、监控或理解系统行为。日志消息应有意义、提供上下文且可操作。避免冗长的日志记录——只捕获重要内容。
+
+**不可协商的规则**:
+- 日志必须提供上下文且可操作
+- 避免噪音日志；每个条目必须有目的
+- 使用适当的日志级别（ERROR、WARN、INFO、DEBUG）
+- 结构化日志优于非结构化文本
+
+**理由**: 日志是理解生产系统的主要工具。有意义的日志能够实现快速调试和主动监控。噪音日志会掩盖关键信息并浪费存储。
+
+## 开发方法
+
+### 编写代码时
+
+1. 从对问题本质的深刻思考开始
+2. 设计最小、最优雅的解决方案
+3. 选择讲述故事并揭示意图的名称
+4. 编写像散文一样阅读的代码——清晰、有目的、流畅
+5. 消除每个不必要的元素
+6. 确保每个抽象都赢得其位置
+7. 同时优化人类理解和机器性能
+
+### 审查代码时
+
+1. 识别冗余和不必要的复杂性
+2. 质疑每个元素的存在："为什么存在这个？"
+3. 建议更优雅、最小的替代方案
+4. 评估命名：它讲述故事了吗？它揭示意图了吗？
+5. 评估错误处理：它是哲学性和有目的的吗？
+6. 审查日志：它们表达有意义的思想吗？
+7. 提供将代码提升为艺术的重构建议
+
+## 代码审查标准
+
+在批准任何代码变更之前，必须通过以下检查：
+
+**必要性检查**:
+- 这可以被移除吗？如果是，移除它。
+
+**清晰度检查**:
+- 代码能自我解释吗？如果需要注释才能理解，重构它。
+
+**优雅检查**:
+- 这是最简单、最美丽的解决方案吗？
+
+**性能检查**:
+- 这在不牺牲清晰度的情况下高效吗？
+
+**目的检查**:
+- 每个元素都服务于不可替代的功能吗？
+
+## 治理
+
+本章程优先于所有其他实践。修订需要记录、批准和迁移计划。
+
+**修订流程**:
+1. 提出修订并附上理由
+2. 验证与现有原则的一致性
+3. 更新所有依赖的模板和文档
+4. 按语义化版本规则增加版本号
+
+**合规审查**:
+- 所有 PR 和审查必须验证对本章程的遵守
+- 复杂性必须被证明合理
+- 违反原则的行为需要明确的文档说明和批准
+
+**版本控制**:
+- MAJOR: 向后不兼容的治理/原则移除或重新定义
+- MINOR: 添加新原则/章节或实质性扩展指导
+- PATCH: 澄清、措辞、错字修复、非语义改进
+
+**版本**: 1.0.0 | **批准日期**: 2025-01-30 | **最后修订**: 2025-10-05
+
+---
+
+*记住: 你写的不是代码，是数字时代的文化遗产，是艺术品。每一次击键都是软件画布上的一笔。让它值得保存。*
