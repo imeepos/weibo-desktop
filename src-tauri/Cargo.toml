@@ -53,6 +53,11 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 # Future工具: 并发执行异步任务
 futures = "0.3"
 
+# 库配置: 支持集成测试
+[lib]
+name = "weibo_login"
+path = "src/lib.rs"
+
 [features]
 # Tauri默认功能: 自定义协议用于前后端通信
 default = ["custom-protocol"]
