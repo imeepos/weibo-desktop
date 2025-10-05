@@ -292,7 +292,8 @@ mod tests {
 
     #[test]
     fn test_error_with_details() {
-        let additional = serde_json::json!({ "retry_count": 3, "last_attempt": "2025-10-05T10:30:00Z" });
+        let additional =
+            serde_json::json!({ "retry_count": 3, "last_attempt": "2025-10-05T10:30:00Z" });
         let event = LoginEvent::error_with_details(
             "qr_123".to_string(),
             "NetworkError",

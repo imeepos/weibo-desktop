@@ -15,13 +15,13 @@
 //! 4. **错误处理**: 所有验证返回 Result,提供完整上下文
 //! 5. **日志安全**: 敏感数据不记录到日志 (如 cookies 值)
 
-pub mod errors;
-pub mod login_session;
 pub mod cookies_data;
+pub mod errors;
 pub mod login_event;
+pub mod login_session;
 
 // 重导出常用类型,简化外部引用
-pub use errors::{ApiError, ValidationError, StorageError, AppError};
-pub use login_session::{LoginSession, QrCodeStatus};
 pub use cookies_data::CookiesData;
-pub use login_event::{LoginEvent, LoginEventType};
+pub use errors::{ApiError, StorageError, ValidationError};
+pub use login_event::LoginEvent;
+pub use login_session::{LoginSession, QrCodeStatus};

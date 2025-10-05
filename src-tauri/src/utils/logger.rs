@@ -48,8 +48,7 @@ pub fn init() -> Result<(), io::Error> {
     // 环境变量过滤器
     // 默认: INFO级别
     // 可通过 RUST_LOG=debug 覆盖
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     // 文件层: JSON格式,便于日志分析工具解析
     let file_layer = fmt::layer()

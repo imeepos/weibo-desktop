@@ -33,8 +33,8 @@ tokio = { version = "1.35", features = ["full"] }
 reqwest = { version = "0.11", features = ["json", "cookies"] }
 
 # Redis客户端: 持久化存储cookies
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
-deadpool-redis = "0.14"  # 连接池,复用连接提升性能
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+deadpool-redis = "0.18"  # 连接池,复用连接提升性能 (兼容 redis 0.27)
 
 # 错误处理: 结构化错误定义
 thiserror = "1.0"
@@ -49,6 +49,9 @@ tracing-appender = "0.2"
 
 # UUID生成: 生成QR code请求的唯一标识
 uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Future工具: 并发执行异步任务
+futures = "0.3"
 
 [features]
 # Tauri默认功能: 自定义协议用于前后端通信
