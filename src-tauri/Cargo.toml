@@ -1,0 +1,56 @@
+[package]
+name = "weibo-login"
+version = "0.1.0"
+description = "微博扫码登录获取Cookies - Desktop Application"
+authors = ["Code Artisan"]
+license = ""
+repository = ""
+edition = "2021"
+
+# 构建配置: 优化性能与二进制大小
+[profile.release]
+panic = "abort"      # 减小二进制大小
+codegen-units = 1    # 更好的优化
+lto = true           # 链接时优化
+opt-level = "z"      # 优化大小
+strip = true         # 移除调试符号
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+# Tauri核心: 桌面应用框架
+tauri = { version = "1.5", features = ["shell-open"] }
+
+# 序列化: 数据结构与JSON互转
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 异步运行时: tokio作为async/await的基础
+tokio = { version = "1.35", features = ["full"] }
+
+# HTTP客户端: 调用微博API,自动管理cookies
+reqwest = { version = "0.11", features = ["json", "cookies"] }
+
+# Redis客户端: 持久化存储cookies
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+deadpool-redis = "0.14"  # 连接池,复用连接提升性能
+
+# 错误处理: 结构化错误定义
+thiserror = "1.0"
+
+# 时间处理: cookies过期时间,日志时间戳
+chrono = { version = "0.4", features = ["serde"] }
+
+# 结构化日志: 记录系统运行状态
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-appender = "0.2"
+
+# UUID生成: 生成QR code请求的唯一标识
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+[features]
+# Tauri默认功能: 自定义协议用于前后端通信
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

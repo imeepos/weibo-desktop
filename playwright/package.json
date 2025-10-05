@@ -1,0 +1,17 @@
+{
+  "name": "playwright-cookies-validator",
+  "version": "1.0.0",
+  "description": "微博Cookies验证 - Playwright自动化脚本",
+  "type": "module",
+  "scripts": {
+    "validate": "node --loader ts-node/esm src/validate-cookies.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}

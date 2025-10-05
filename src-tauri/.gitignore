@@ -1,0 +1,9 @@
+# Rust编译产物
+target/
+Cargo.lock
+
+# 图标生成临时文件
+icons/
+
+# WIX安装包临时文件
+WixTools/
