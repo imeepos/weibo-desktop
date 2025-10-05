@@ -31,3 +31,9 @@ src-tauri/target/
 # Playwright
 playwright/dist/
 playwright/.cache/
+
+# E2E 测试结果
+test-results/
+playwright-report/
+playwright/.auth
+*.png-snapshots/

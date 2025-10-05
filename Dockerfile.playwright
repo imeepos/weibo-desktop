@@ -1,0 +1,49 @@
+# Playwright + Tauri 测试环境
+# 基于 Ubuntu 22.04
+
+FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+
+# 设置工作目录
+WORKDIR /workspace/desktop
+
+# 安装 Rust (Tauri 需要)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# 安装 Node.js 20 和 pnpm
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g pnpm@8
+
+# 安装 Tauri 系统依赖
+RUN apt-get update && apt-get install -y \
+    libwebkit2gtk-4.0-dev \
+    build-essential \
+    curl \
+    wget \
+    file \
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制项目文件
+COPY package.json pnpm-lock.yaml ./
+COPY src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/
+
+# 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 安装 Playwright 浏览器
+RUN pnpm exec playwright install chromium --with-deps
+
+# 复制源代码
+COPY . .
+
+# 暴露端口
+EXPOSE 1420
+
+# 默认命令
+CMD ["pnpm", "test:e2e"]

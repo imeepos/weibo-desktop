@@ -1,0 +1,64 @@
+# Docker Compose 配置示例 - Playwright E2E 测试环境
+#
+# 使用方法:
+# docker compose -f .playwright-docker.yml up --build
+
+version: '3.8'
+
+services:
+  # Redis 服务 (测试依赖)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Playwright 测试运行器
+  playwright-tests:
+    image: mcr.microsoft.com/playwright:v1.40.0-jammy
+    depends_on:
+      redis:
+        condition: service_healthy
+    working_dir: /workspace/desktop
+    volumes:
+      - .:/workspace/desktop
+      - /workspace/desktop/node_modules
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CI=true
+      - PLAYWRIGHT_HEADLESS=true
+      - PWDEBUG=0
+    command: |
+      bash -c "
+        pnpm install --frozen-lockfile &&
+        pnpm exec playwright install chromium --with-deps &&
+        pnpm test:e2e
+      "
+    shm_size: '2gb'  # 避免共享内存不足
+
+  # 本地开发环境 (带 Tauri)
+  dev-env:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    depends_on:
+      - redis
+    working_dir: /workspace/desktop
+    volumes:
+      - .:/workspace/desktop
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DISPLAY=:99
+    ports:
+      - "1420:1420"
+    command: |
+      bash -c "
+        Xvfb :99 -screen 0 1280x720x24 &
+        pnpm install &&
+        pnpm tauri dev
+      "
+    shm_size: '2gb'
