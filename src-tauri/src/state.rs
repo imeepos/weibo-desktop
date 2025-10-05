@@ -1,5 +1,8 @@
 use crate::services::{RedisService, ValidationService, WeiboApiClient};
+use crate::models::dependency::DependencyCheckResult;
 use std::sync::Arc;
+use std::collections::HashMap;
+use tokio::sync::RwLock;
 
 /// 应用全局状态
 ///
@@ -7,8 +10,9 @@ use std::sync::Arc;
 /// - redis: 数据持久化
 /// - weibo_api: 微博平台交互 (Playwright自动化)
 /// - validator: Cookies可信度保障
+/// - check_cache: 依赖检测结果内存缓存 (Redis的fallback)
 ///
-/// Arc保证多线程安全访问,无需Mutex因为服务自身已处理并发
+/// Arc保证多线程安全访问,检查缓存使用RwLock支持并发读写
 pub struct AppState {
     /// Redis服务: 唯一的数据存储入口
     pub redis: Arc<RedisService>,
@@ -18,6 +22,14 @@ pub struct AppState {
 
     /// Cookies验证服务: 唯一的可信度检验机制
     pub validator: Arc<ValidationService>,
+
+    /// 依赖检测结果内存缓存 (dependency_id -> CheckResult)
+    ///
+    /// 用途:
+    /// 1. Redis不可用时的fallback存储
+    /// 2. 快速内存查询以提升性能
+    /// 3. 支持依赖检测过程中的实时状态查询
+    pub check_cache: Arc<RwLock<HashMap<String, DependencyCheckResult>>>,
 }
 
 impl AppState {
@@ -54,6 +66,7 @@ impl AppState {
             redis,
             weibo_api,
             validator,
+            check_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 }

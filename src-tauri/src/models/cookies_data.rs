@@ -38,6 +38,7 @@ impl CookiesData {
     ///
     /// # 示例
     /// ```
+    /// use weibo_login::models::CookiesData;
     /// use std::collections::HashMap;
     /// let mut cookies = HashMap::new();
     /// cookies.insert("SUB".to_string(), "xxx".to_string());
@@ -92,7 +93,13 @@ impl CookiesData {
     ///
     /// # 示例
     /// ```
-    /// // 输出: "SUB, SUBP, _T_WM"
+    /// use weibo_login::models::CookiesData;
+    /// use std::collections::HashMap;
+    /// let mut cookies = HashMap::new();
+    /// cookies.insert("SUB".to_string(), "xxx".to_string());
+    /// cookies.insert("SUBP".to_string(), "yyy".to_string());
+    /// let data = CookiesData::new("1234567890".to_string(), cookies);
+    /// // 输出: "SUB, SUBP"
     /// let sample = data.sample_for_logging();
     /// ```
     pub fn sample_for_logging(&self) -> String {
@@ -104,52 +111,22 @@ impl CookiesData {
             .join(", ")
     }
 
-    /// 转换为cookie header格式
-    ///
-    /// 用于构造HTTP请求的 `Cookie` header。
-    ///
-    /// # 示例
-    /// ```
-    /// // 输出: "SUB=xxx; SUBP=yyy; _T_WM=zzz"
-    /// let header = data.to_cookie_header();
-    /// ```
-    pub fn to_cookie_header(&self) -> String {
-        self.cookies
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<_>>()
-            .join("; ")
-    }
-
     /// 设置用户昵称 (构建器模式)
     ///
     /// # 示例
     /// ```
+    /// use weibo_login::models::CookiesData;
+    /// use std::collections::HashMap;
+    /// let mut cookies = HashMap::new();
+    /// cookies.insert("SUB".to_string(), "xxx".to_string());
+    /// cookies.insert("SUBP".to_string(), "yyy".to_string());
+    /// let uid = "1234567890".to_string();
     /// let data = CookiesData::new(uid, cookies)
     ///     .with_screen_name("张三".to_string());
     /// ```
     pub fn with_screen_name(mut self, screen_name: String) -> Self {
         self.screen_name = Some(screen_name);
         self
-    }
-
-    /// 获取cookie数量
-    ///
-    /// 用于日志统计和验证。
-    pub fn cookie_count(&self) -> usize {
-        self.cookies.len()
-    }
-
-    /// 检查是否包含指定cookie
-    pub fn contains_cookie(&self, name: &str) -> bool {
-        self.cookies.contains_key(name)
-    }
-
-    /// 获取指定cookie的值
-    ///
-    /// 注意: 仅在内部使用,不应记录到日志。
-    pub fn get_cookie(&self, name: &str) -> Option<&String> {
-        self.cookies.get(name)
     }
 }
 
@@ -172,7 +149,7 @@ mod tests {
 
         assert_eq!(data.uid, "1234567890");
         assert_eq!(data.redis_key, "weibo:cookies:1234567890");
-        assert_eq!(data.cookie_count(), 3);
+        assert_eq!(data.cookies.len(), 3);
         assert!(data.screen_name.is_none());
     }
 
@@ -224,44 +201,11 @@ mod tests {
     }
 
     #[test]
-    fn test_to_cookie_header() {
-        let mut cookies = HashMap::new();
-        cookies.insert("SUB".to_string(), "xxx".to_string());
-        cookies.insert("SUBP".to_string(), "yyy".to_string());
-
-        let data = CookiesData::new("1234567890".to_string(), cookies);
-        let header = data.to_cookie_header();
-
-        assert!(header.contains("SUB=xxx"));
-        assert!(header.contains("SUBP=yyy"));
-        assert!(header.contains("; "));
-    }
-
-    #[test]
     fn test_with_screen_name() {
         let cookies = create_test_cookies();
         let data = CookiesData::new("1234567890".to_string(), cookies)
             .with_screen_name("测试用户".to_string());
 
         assert_eq!(data.screen_name, Some("测试用户".to_string()));
-    }
-
-    #[test]
-    fn test_contains_cookie() {
-        let cookies = create_test_cookies();
-        let data = CookiesData::new("1234567890".to_string(), cookies);
-
-        assert!(data.contains_cookie("SUB"));
-        assert!(data.contains_cookie("SUBP"));
-        assert!(!data.contains_cookie("NONEXISTENT"));
-    }
-
-    #[test]
-    fn test_get_cookie() {
-        let cookies = create_test_cookies();
-        let data = CookiesData::new("1234567890".to_string(), cookies);
-
-        assert_eq!(data.get_cookie("SUB"), Some(&"xxx_value".to_string()));
-        assert_eq!(data.get_cookie("NONEXISTENT"), None);
     }
 }

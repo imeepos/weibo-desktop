@@ -29,11 +29,9 @@ pub struct LoginSession {
 /// 二维码状态
 ///
 /// 状态转换流程:
-/// Pending -> Scanned -> ConfirmedSuccess
-///     |          |              |
-///     +----------+--------------+---> Expired (任何状态超时)
-///                |
-///                +---> Rejected (用户拒绝)
+/// Pending -> Scanned -> Confirmed
+///     |          |
+///     +----------+---> Expired (任何状态超时)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QrCodeStatus {
@@ -44,13 +42,10 @@ pub enum QrCodeStatus {
     Scanned,
 
     /// 确认成功
-    ConfirmedSuccess,
+    Confirmed,
 
     /// 已过期
     Expired,
-
-    /// 用户拒绝
-    Rejected,
 }
 
 impl LoginSession {
@@ -62,6 +57,7 @@ impl LoginSession {
     ///
     /// # 示例
     /// ```
+    /// use weibo_login::models::{LoginSession, QrCodeStatus};
     /// let session = LoginSession::new("qr_abc123".to_string(), 180);
     /// assert_eq!(session.status, QrCodeStatus::Pending);
     /// ```
@@ -86,21 +82,6 @@ impl LoginSession {
         Utc::now() > self.expires_at || self.status == QrCodeStatus::Expired
     }
 
-    /// 检查是否为终态
-    ///
-    /// 终态包括:
-    /// - `ConfirmedSuccess`: 登录成功
-    /// - `Expired`: 二维码过期
-    /// - `Rejected`: 用户拒绝
-    ///
-    /// 一旦进入终态,不应再进行状态轮询。
-    pub fn is_final_status(&self) -> bool {
-        matches!(
-            self.status,
-            QrCodeStatus::ConfirmedSuccess | QrCodeStatus::Expired | QrCodeStatus::Rejected
-        )
-    }
-
     /// 更新状态为已扫码
     ///
     /// 记录用户扫码的时间点,用于性能分析和用户体验反馈。
@@ -113,7 +94,7 @@ impl LoginSession {
     ///
     /// 记录用户确认登录的时间点,标志登录流程成功完成。
     pub fn mark_confirmed(&mut self) {
-        self.status = QrCodeStatus::ConfirmedSuccess;
+        self.status = QrCodeStatus::Confirmed;
         self.confirmed_at = Some(Utc::now());
     }
 
@@ -122,13 +103,6 @@ impl LoginSession {
     /// 当检测到超时或API返回过期状态时调用。
     pub fn mark_expired(&mut self) {
         self.status = QrCodeStatus::Expired;
-    }
-
-    /// 更新状态为用户拒绝
-    ///
-    /// 当API返回用户在手机端拒绝登录时调用。
-    pub fn mark_rejected(&mut self) {
-        self.status = QrCodeStatus::Rejected;
     }
 
     /// 获取会话持续时长(秒)
@@ -160,7 +134,6 @@ mod tests {
         assert!(session.scanned_at.is_none());
         assert!(session.confirmed_at.is_none());
         assert!(!session.is_expired());
-        assert!(!session.is_final_status());
     }
 
     #[test]
@@ -169,16 +142,14 @@ mod tests {
         session.mark_scanned();
         assert_eq!(session.status, QrCodeStatus::Scanned);
         assert!(session.scanned_at.is_some());
-        assert!(!session.is_final_status());
     }
 
     #[test]
     fn test_mark_confirmed() {
         let mut session = LoginSession::new("test_qr_123".to_string(), 180);
         session.mark_confirmed();
-        assert_eq!(session.status, QrCodeStatus::ConfirmedSuccess);
+        assert_eq!(session.status, QrCodeStatus::Confirmed);
         assert!(session.confirmed_at.is_some());
-        assert!(session.is_final_status());
     }
 
     #[test]
@@ -187,7 +158,6 @@ mod tests {
         session.mark_expired();
         assert_eq!(session.status, QrCodeStatus::Expired);
         assert!(session.is_expired());
-        assert!(session.is_final_status());
     }
 
     #[test]

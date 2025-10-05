@@ -22,8 +22,12 @@ impl RedisService {
     /// 返回 `StorageError::RedisConnectionFailed` 如果连接池创建失败
     ///
     /// # 示例
-    /// ```
+    /// ```no_run
+    /// use weibo_login::services::RedisService;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let service = RedisService::new("redis://localhost:6379")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(redis_url: &str) -> Result<Self, StorageError> {
         let config = Config::from_url(redis_url);

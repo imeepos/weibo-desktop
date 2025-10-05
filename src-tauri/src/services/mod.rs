@@ -39,19 +39,21 @@
 //!
 //! # 使用示例
 //!
-//! ```rust
-//! use services::{RedisService, WeiboApiClient, ValidationService};
+//! ```no_run
+//! use weibo_login::services::{RedisService, WeiboApiClient, ValidationService};
+//! use weibo_login::models::CookiesData;
 //!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // 初始化服务
 //! let redis = RedisService::new("redis://localhost:6379")?;
-//! let weibo_api = WeiboApiClient::new("app_key".to_string());
-//! let validator = ValidationService::new("/path/to/script.js".to_string());
+//! let weibo_api = WeiboApiClient::new("/path/to/playwright_script.js".to_string());
+//! let validator = ValidationService::new("/path/to/validation_script.js".to_string());
 //!
 //! // 生成二维码
 //! let (mut session, qr_image) = weibo_api.generate_qrcode().await?;
 //!
-//! // 轮询直到登录
-//! if let Some((uid, cookies)) = weibo_api.poll_until_final(&mut session, 2000).await? {
+//! // 检查登录状态(单次)
+//! if let Some((uid, cookies)) = weibo_api.check_qrcode_status(&mut session).await? {
 //!     // 验证cookies
 //!     let (uid, screen_name) = validator.validate_cookies(&cookies).await?;
 //!
@@ -60,13 +62,21 @@
 //!         .with_screen_name(screen_name);
 //!     redis.save_cookies(&cookies_data).await?;
 //! }
+//! # Ok(())
+//! # }
 //! ```
 
+pub mod dependency_checker;
+pub mod installer_service;
+pub mod logger_service;
 pub mod redis_service;
 pub mod validation_service;
 pub mod weibo_api;
 
 // 重导出常用类型,简化外部引用
+pub use dependency_checker::DependencyChecker;
+pub use installer_service::InstallerService;
+pub use logger_service::LoggerService;
 pub use redis_service::RedisService;
 pub use validation_service::ValidationService;
 pub use weibo_api::WeiboApiClient;

@@ -22,7 +22,7 @@ mod login_session_tests {
     // 由于 LoginSession 已经在 src/models/login_session.rs 中有完整测试
     // 这里补充一些边界场景和状态转换测试
 
-    /// 测试状态转换流程: Pending -> Scanned -> ConfirmedSuccess
+    /// 测试状态转换流程: Pending -> Scanned -> Confirmed
     ///
     /// 验证完整的登录成功流程
     #[test]
@@ -37,21 +37,10 @@ mod login_session_tests {
         // session.mark_scanned();
         // assert_eq!(session.status, QrCodeStatus::Scanned);
         // assert!(session.scanned_at.is_some());
-        // assert!(!session.is_final_status());
         //
         // session.mark_confirmed();
-        // assert_eq!(session.status, QrCodeStatus::ConfirmedSuccess);
+        // assert_eq!(session.status, QrCodeStatus::Confirmed);
         // assert!(session.confirmed_at.is_some());
-        // assert!(session.is_final_status());
-    }
-
-    /// 测试状态转换流程: Pending -> Rejected
-    #[test]
-    fn test_state_transition_reject_flow() {
-        // let mut session = LoginSession::new("qr_123".to_string(), 180);
-        // session.mark_rejected();
-        // assert_eq!(session.status, QrCodeStatus::Rejected);
-        // assert!(session.is_final_status());
     }
 
     /// 测试状态转换流程: Pending -> Expired
@@ -63,7 +52,6 @@ mod login_session_tests {
         //
         // session.mark_expired();
         // assert_eq!(session.status, QrCodeStatus::Expired);
-        // assert!(session.is_final_status());
     }
 
     /// 测试过期检查的边界条件
@@ -194,69 +182,6 @@ mod cookies_data_tests {
         // assert!(sample1.starts_with("SUB") || sample1.starts_with("_T_WM"));
     }
 
-    /// 测试 to_cookie_header 格式
-    #[test]
-    fn test_to_cookie_header_format() {
-        // let mut cookies = HashMap::new();
-        // cookies.insert("SUB".to_string(), "value1".to_string());
-        // cookies.insert("SUBP".to_string(), "value2".to_string());
-        //
-        // let data = CookiesData::new("123".to_string(), cookies);
-        // let header = data.to_cookie_header();
-        //
-        // // 验证格式: key=value; key=value
-        // assert!(header.contains("SUB=value1"));
-        // assert!(header.contains("SUBP=value2"));
-        // assert!(header.contains("; "));
-    }
-
-    /// 测试 with_screen_name 构建器模式
-    #[test]
-    fn test_with_screen_name_builder() {
-        // let mut cookies = HashMap::new();
-        // cookies.insert("SUB".to_string(), "xxx".to_string());
-        // cookies.insert("SUBP".to_string(), "yyy".to_string());
-        //
-        // let data = CookiesData::new("123".to_string(), cookies)
-        //     .with_screen_name("测试用户".to_string());
-        //
-        // assert_eq!(data.screen_name, Some("测试用户".to_string()));
-    }
-
-    /// 测试 cookie_count
-    #[test]
-    fn test_cookie_count() {
-        // let mut cookies = HashMap::new();
-        // cookies.insert("SUB".to_string(), "xxx".to_string());
-        // cookies.insert("SUBP".to_string(), "yyy".to_string());
-        // cookies.insert("_T_WM".to_string(), "zzz".to_string());
-        //
-        // let data = CookiesData::new("123".to_string(), cookies);
-        // assert_eq!(data.cookie_count(), 3);
-    }
-
-    /// 测试 contains_cookie
-    #[test]
-    fn test_contains_cookie() {
-        // let mut cookies = HashMap::new();
-        // cookies.insert("SUB".to_string(), "xxx".to_string());
-        //
-        // let data = CookiesData::new("123".to_string(), cookies);
-        // assert!(data.contains_cookie("SUB"));
-        // assert!(!data.contains_cookie("NONEXISTENT"));
-    }
-
-    /// 测试 get_cookie
-    #[test]
-    fn test_get_cookie() {
-        // let mut cookies = HashMap::new();
-        // cookies.insert("SUB".to_string(), "xxx_value".to_string());
-        //
-        // let data = CookiesData::new("123".to_string(), cookies);
-        // assert_eq!(data.get_cookie("SUB"), Some(&"xxx_value".to_string()));
-        // assert_eq!(data.get_cookie("NONEXISTENT"), None);
-    }
-
     /// 测试空cookies验证失败
     #[test]
     fn test_validate_empty_cookies() {
@@ -312,13 +237,6 @@ mod errors_tests {
         // - StorageError::SerializationError
     }
 
-    /// 测试 AppError 的透明传播
-    #[test]
-    fn test_app_error_transparent() {
-        // 验证 AppError::from(ApiError) 正常工作
-        // 验证 AppError::from(ValidationError) 正常工作
-        // 验证 AppError::from(StorageError) 正常工作
-    }
 }
 
 /// 集成测试: 完整业务流程
@@ -352,7 +270,7 @@ mod integration_tests {
         // 1. 创建短期会话 (1秒)
         // 2. 等待过期
         // 3. 验证 is_expired() 返回 true
-        // 4. 验证 is_final_status() 在标记过期后返回 true
+        // 4. 验证状态正确标记为 Expired
     }
 }
 
@@ -380,24 +298,6 @@ mod performance_tests {
         //
         // assert!(duration.as_millis() < 10); // 应该非常快
         // assert!(!sample.contains("value_")); // 不包含值
-    }
-
-    /// 测试 to_cookie_header 性能
-    #[test]
-    fn test_to_cookie_header_performance() {
-        // let mut cookies = HashMap::new();
-        // for i in 0..100 {
-        //     cookies.insert(format!("cookie_{}", i), format!("value_{}", i));
-        // }
-        //
-        // let data = CookiesData::new("123".to_string(), cookies);
-        //
-        // let start = std::time::Instant::now();
-        // let header = data.to_cookie_header();
-        // let duration = start.elapsed();
-        //
-        // assert!(duration.as_millis() < 10);
-        // assert!(header.contains("cookie_"));
     }
 }
 

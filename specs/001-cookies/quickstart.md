@@ -567,7 +567,7 @@ redis-cli --latency
 ### 检查必需日志事件
 ```bash
 # 统计登录流程的所有事件
-grep -E "Generated|Scanned|ConfirmedSuccess|ValidationSuccess" logs/weibo-login.log | wc -l
+grep -E "Generated|Scanned|Confirmed|ValidationSuccess" logs/weibo-login.log | wc -l
 # 应至少有4行 (完整流程)
 ```
 

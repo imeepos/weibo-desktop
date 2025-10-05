@@ -7,6 +7,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+// 导入依赖模型
+use weibo_login::models::dependency::CheckStatus;
+
 /// Mock Redis服务
 ///
 /// 内存实现的Redis,支持基本操作:
@@ -14,6 +17,7 @@ use tokio::sync::Mutex;
 /// - HSET/HGETALL: Hash操作
 /// - EXISTS: 键存在检查
 /// - DEL: 删除键
+#[allow(dead_code)]
 pub struct MockRedisService {
     /// 内存存储 (键 -> JSON字符串)
     storage: Arc<Mutex<HashMap<String, String>>>,
@@ -23,6 +27,7 @@ pub struct MockRedisService {
     should_fail: Arc<Mutex<bool>>,
 }
 
+#[allow(dead_code)]
 impl MockRedisService {
     /// 创建新的Mock Redis服务
     pub fn new() -> Self {
@@ -145,6 +150,7 @@ impl Default for MockRedisService {
 ///
 /// 模拟浏览器自动化验证cookies有效性。
 /// 可配置成功/失败模式,用于测试不同验证场景。
+#[allow(dead_code)]
 pub struct MockValidationService {
     /// 是否应该验证成功
     should_succeed: bool,
@@ -154,6 +160,7 @@ pub struct MockValidationService {
     mock_screen_name: String,
 }
 
+#[allow(dead_code)]
 impl MockValidationService {
     /// 创建验证成功的Mock服务
     pub fn new_success() -> Self {
@@ -240,6 +247,173 @@ pub fn create_invalid_cookies() -> HashMap<String, String> {
     cookies.insert("SUB".to_string(), "only_sub".to_string());
     // 缺少 SUBP
     cookies
+}
+
+/// Mock依赖检测服务
+///
+/// 模拟系统依赖检测过程,可配置依赖满足状态
+/// 用于测试不同依赖场景的集成测试
+#[allow(dead_code)]
+pub struct MockDependencyChecker {
+    /// Redis服务状态
+    pub redis_satisfied: bool,
+    /// Redis版本
+    pub redis_version: String,
+    /// Playwright状态
+    pub playwright_satisfied: bool,
+    /// Playwright版本
+    pub playwright_version: String,
+    /// 检测延迟(毫秒)
+    pub check_delay_ms: u64,
+}
+
+#[allow(dead_code)]
+impl MockDependencyChecker {
+    /// 创建所有依赖都满足的Mock服务
+    pub fn new_all_satisfied() -> Self {
+        Self {
+            redis_satisfied: true,
+            redis_version: "7.2.4".to_string(),
+            playwright_satisfied: true,
+            playwright_version: "1.48.0".to_string(),
+            check_delay_ms: 50, // 模拟快速检测
+        }
+    }
+
+    /// 创建Redis缺失的Mock服务
+    pub fn new_redis_missing() -> Self {
+        Self {
+            redis_satisfied: false,
+            redis_version: String::new(),
+            playwright_satisfied: true,
+            playwright_version: "1.48.0".to_string(),
+            check_delay_ms: 100,
+        }
+    }
+
+    /// 创建Playwright缺失的Mock服务
+    pub fn new_playwright_missing() -> Self {
+        Self {
+            redis_satisfied: true,
+            redis_version: "7.2.4".to_string(),
+            playwright_satisfied: false,
+            playwright_version: String::new(),
+            check_delay_ms: 100,
+        }
+    }
+
+    /// 创建自定义配置的Mock服务
+    pub fn new(
+        redis_satisfied: bool,
+        redis_version: String,
+        playwright_satisfied: bool,
+        playwright_version: String,
+        check_delay_ms: u64,
+    ) -> Self {
+        Self {
+            redis_satisfied,
+            redis_version,
+            playwright_satisfied,
+            playwright_version,
+            check_delay_ms,
+        }
+    }
+
+    /// 检测所有依赖项
+    pub async fn check_all(&self) -> Vec<MockDependencyResult> {
+        // 模拟检测延迟
+        tokio::time::sleep(tokio::time::Duration::from_millis(self.check_delay_ms)).await;
+
+        let mut results = Vec::new();
+
+        // 检测Redis
+        let redis_result = MockDependencyResult {
+            dependency_id: "redis".to_string(),
+            dependency_name: "Redis Server".to_string(),
+            status: if self.redis_satisfied {
+                CheckStatus::Satisfied
+            } else {
+                CheckStatus::Missing
+            },
+            detected_version: if self.redis_satisfied {
+                Some(self.redis_version.clone())
+            } else {
+                None
+            },
+            error_details: if !self.redis_satisfied {
+                Some("Redis service not reachable at localhost:6379".to_string())
+            } else {
+                None
+            },
+            duration_ms: self.check_delay_ms / 2,
+            checked_at: chrono::Utc::now(),
+        };
+        results.push(redis_result);
+
+        // 检测Playwright
+        let playwright_result = MockDependencyResult {
+            dependency_id: "playwright".to_string(),
+            dependency_name: "Playwright".to_string(),
+            status: if self.playwright_satisfied {
+                CheckStatus::Satisfied
+            } else {
+                CheckStatus::Missing
+            },
+            detected_version: if self.playwright_satisfied {
+                Some(self.playwright_version.clone())
+            } else {
+                None
+            },
+            error_details: if !self.playwright_satisfied {
+                Some("Playwright not found in node_modules".to_string())
+            } else {
+                None
+            },
+            duration_ms: self.check_delay_ms / 2,
+            checked_at: chrono::Utc::now(),
+        };
+        results.push(playwright_result);
+
+        results
+    }
+
+    /// 获取总检测耗时
+    pub fn get_total_duration(&self) -> u64 {
+        self.check_delay_ms
+    }
+}
+
+/// Mock依赖检测结果
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct MockDependencyResult {
+    pub dependency_id: String,
+    pub dependency_name: String,
+    pub status: CheckStatus,
+    pub detected_version: Option<String>,
+    pub error_details: Option<String>,
+    pub duration_ms: u64,
+    pub checked_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl MockDependencyResult {
+    /// 转换为契约定义的DependencyCheckResult
+    pub fn to_contract_result(&self) -> weibo_login::models::dependency::DependencyCheckResult {
+        weibo_login::models::dependency::DependencyCheckResult {
+            dependency_id: self.dependency_id.clone(),
+            checked_at: self.checked_at,
+            status: self.status.clone(),
+            detected_version: self.detected_version.clone(),
+            error_details: self.error_details.clone(),
+            duration_ms: self.duration_ms,
+        }
+    }
+}
+
+impl Default for MockDependencyChecker {
+    fn default() -> Self {
+        Self::new_all_satisfied()
+    }
 }
 
 #[cfg(test)]

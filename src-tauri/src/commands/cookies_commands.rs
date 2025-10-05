@@ -1,21 +1,128 @@
-use crate::models::CookiesData;
+use crate::models::{CookiesData, StorageError, ValidationError};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::State;
+use thiserror::Error;
 
-/// 保存Cookies请求
+/// 保存Cookies错误
 ///
-/// 契约定义: specs/001-cookies/contracts/save_cookies.md
-/// 三个字段,三个核心信息:
-/// - uid: 身份标识,存储的键
-/// - cookies: 凭证本身,价值所在
-/// - screen_name: 人性化展示,非必需但重要
-#[derive(Debug, Deserialize)]
-pub struct SaveCookiesRequest {
-    pub uid: String,
-    pub cookies: HashMap<String, String>,
-    pub screen_name: Option<String>,
+/// 契约定义: specs/001-cookies/contracts/save_cookies.md:100
+/// 扁平化错误结构,确保序列化格式符合契约要求
+#[derive(Debug, Error, Serialize, Deserialize)]
+#[serde(tag = "error")]
+pub enum SaveCookiesError {
+    /// 个人资料API调用失败 (Cookies无效)
+    #[error("个人资料API调用失败 (状态码 {status}): {message}")]
+    ProfileApiFailed {
+        status: u16,
+        message: String,
+    },
+
+    /// 缺少必需的cookie字段
+    #[error("缺少必需的cookie字段: {cookie_name}")]
+    MissingCookie {
+        cookie_name: String,
+    },
+
+    /// Playwright执行失败
+    #[error("Playwright脚本执行失败: {message}")]
+    PlaywrightFailed {
+        message: String,
+    },
+
+    /// Cookies格式无效
+    #[error("Cookies格式无效: {message}")]
+    InvalidFormat {
+        message: String,
+    },
+
+    /// UID提取失败
+    #[error("无法提取用户UID: {message}")]
+    UidExtractionFailed {
+        message: String,
+    },
+
+    /// Redis连接失败
+    #[error("Redis连接失败: {message}")]
+    RedisConnectionFailed {
+        message: String,
+    },
+
+    /// 指定UID的Cookies未找到
+    #[error("未找到UID {uid} 的Cookies")]
+    NotFound {
+        uid: String,
+    },
+
+    /// 序列化/反序列化失败
+    #[error("数据序列化失败: {message}")]
+    SerializationError {
+        message: String,
+    },
+
+    /// Redis操作超时
+    #[error("Redis操作超时: {message}")]
+    OperationTimeout {
+        message: String,
+    },
+
+    /// Redis命令执行失败
+    #[error("Redis命令执行失败: {message}")]
+    CommandFailed {
+        message: String,
+    },
+
+    /// UID不匹配
+    #[error("UID不匹配: 期望 {expected}, 实际 {actual}")]
+    UidMismatch {
+        expected: String,
+        actual: String,
+    },
+}
+
+/// 从 ValidationError 转换为 SaveCookiesError
+impl From<ValidationError> for SaveCookiesError {
+    fn from(err: ValidationError) -> Self {
+        match err {
+            ValidationError::ProfileApiFailed { status, message } => {
+                SaveCookiesError::ProfileApiFailed { status, message }
+            }
+            ValidationError::MissingCookie(cookie_name) => {
+                SaveCookiesError::MissingCookie { cookie_name }
+            }
+            ValidationError::PlaywrightFailed(message) => {
+                SaveCookiesError::PlaywrightFailed { message }
+            }
+            ValidationError::InvalidFormat(message) => {
+                SaveCookiesError::InvalidFormat { message }
+            }
+            ValidationError::UidExtractionFailed(message) => {
+                SaveCookiesError::UidExtractionFailed { message }
+            }
+        }
+    }
+}
+
+/// 从 StorageError 转换为 SaveCookiesError
+impl From<StorageError> for SaveCookiesError {
+    fn from(err: StorageError) -> Self {
+        match err {
+            StorageError::RedisConnectionFailed(message) => {
+                SaveCookiesError::RedisConnectionFailed { message }
+            }
+            StorageError::NotFound(uid) => SaveCookiesError::NotFound { uid },
+            StorageError::SerializationError(message) => {
+                SaveCookiesError::SerializationError { message }
+            }
+            StorageError::OperationTimeout(message) => {
+                SaveCookiesError::OperationTimeout { message }
+            }
+            StorageError::CommandFailed(message) => {
+                SaveCookiesError::CommandFailed { message }
+            }
+        }
+    }
 }
 
 /// 保存Cookies响应
@@ -35,56 +142,53 @@ pub struct SaveCookiesResponse {
 
 /// 保存Cookies命令
 ///
+/// 契约定义: specs/001-cookies/contracts/save_cookies.md:31
+/// 参数扁平化,直接接收 uid, cookies, screen_name。
+///
 /// 完整的验证-保存流程:
 /// 1. 验证cookies有效性 (Playwright调用微博API)
 /// 2. 确保UID匹配 (安全检查)
 /// 3. 保存到Redis (持久化)
 ///
-/// # 错误处理即为人处世
-/// 验证失败 -> 友善提示"Cookies无效,请重新登录"
-/// UID不匹配 -> 明确指出问题所在
-/// 存储失败 -> 说明"存储服务不可用"
-///
-/// 每个错误都是与用户的对话,而非技术性甩锅。
+/// 返回:
+/// - 成功: SaveCookiesResponse
+/// - 失败: SaveCookiesError (Validation, Storage, UidMismatch)
 #[tauri::command]
 pub async fn save_cookies(
-    request: SaveCookiesRequest,
+    uid: String,
+    cookies: HashMap<String, String>,
+    screen_name: Option<String>,
     state: State<'_, AppState>,
-) -> Result<SaveCookiesResponse, String> {
+) -> Result<SaveCookiesResponse, SaveCookiesError> {
     tracing::info!(
-        uid = %request.uid,
-        cookies_count = %request.cookies.len(),
+        uid = %uid,
+        cookies_count = %cookies.len(),
         "save_cookies command called"
     );
 
     let start = std::time::Instant::now();
 
     // 验证cookies
-    let (validated_uid, validated_screen_name) = state
-        .validator
-        .validate_cookies(&request.cookies)
-        .await
-        .map_err(|e| format!("Validation failed: {}", e))?;
+    let (validated_uid, validated_screen_name) =
+        state.validator.validate_cookies(&cookies).await?;
 
     // 确保UID匹配 - 安全性的基石
-    if validated_uid != request.uid {
-        return Err(format!(
-            "UID mismatch: expected {}, got {}",
-            request.uid, validated_uid
-        ));
+    if validated_uid != uid {
+        return Err(SaveCookiesError::UidMismatch {
+            expected: uid,
+            actual: validated_uid,
+        });
     }
 
     // 创建CookiesData
-    let mut cookies_data = CookiesData::new(validated_uid, request.cookies);
-    cookies_data = cookies_data
-        .with_screen_name(request.screen_name.unwrap_or(validated_screen_name));
+    let mut cookies_data = CookiesData::new(validated_uid, cookies);
+    cookies_data = cookies_data.with_screen_name(screen_name.unwrap_or(validated_screen_name));
+
+    // 验证CookiesData结构
+    cookies_data.validate()?;
 
     // 保存到Redis
-    let is_overwrite = state
-        .redis
-        .save_cookies(&cookies_data)
-        .await
-        .map_err(|e| format!("Failed to save: {}", e))?;
+    let is_overwrite = state.redis.save_cookies(&cookies_data).await?;
 
     let validation_duration = start.elapsed();
 

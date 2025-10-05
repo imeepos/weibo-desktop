@@ -111,11 +111,6 @@ impl LoginSession {
     pub fn is_expired(&self) -> bool {
         Utc::now() > self.expires_at || self.status == QrCodeStatus::Expired
     }
-
-    /// 检查是否为终态
-    pub fn is_final_status(&self) -> bool {
-        matches!(self.status, QrCodeStatus::Confirmed | QrCodeStatus::Expired)
-    }
 }
 ```
 
@@ -319,7 +314,7 @@ pub enum LoginEventType {
     Scanned,
 
     /// 用户确认登录成功
-    ConfirmedSuccess,
+    Confirmed,
 
     /// Cookies验证成功
     ValidationSuccess,
@@ -424,7 +419,7 @@ impl LoginEvent {
 export type LoginEventType =
   | 'generated'
   | 'scanned'
-  | 'confirmed_success'
+  | 'confirmed'
   | 'validation_success'
   | 'validation_failed'
   | 'qrcode_expired'

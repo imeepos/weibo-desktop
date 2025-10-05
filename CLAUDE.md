@@ -1,7 +1,11 @@
 
-use Chinese!
+use Chinese language!
 use code-artisan agent do anything!
 use pnpm workspace!
+
+## 并行执行：
+
+启动多个 code-artisan 代理，每一个负责一个任务，所有任务完成后，再分配一个code-artisan代理做检查汇总
 
 ## 项目信息
 

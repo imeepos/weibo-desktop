@@ -114,7 +114,7 @@
 - [x] **Gate 2.2**: 命名遵循领域语言
   - 使用微博术语: `uid`, `cookies`, `qrcode`
   - 状态转换清晰: `Pending → Scanned → Confirmed → Validated`
-  - 事件类型明确: `Generated`, `Scanned`, `ConfirmedSuccess`, `ValidationFailed`
+  - 事件类型明确: `Generated`, `Scanned`, `Confirmed`, `ValidationFailed`
 - [x] **Gate 2.3**: 代码流畅如散文
   - Rust类型系统表达状态: `Result<CookiesData, ValidationError>`
   - 异步流程清晰: `async fn poll_until_confirmed() -> Result<Cookies>`

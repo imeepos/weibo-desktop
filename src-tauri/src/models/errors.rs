@@ -1,10 +1,13 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// API调用相关错误
 ///
 /// 处理与微博API交互时的各种失败场景。
 /// 每个错误都包含足够的上下文信息,帮助调试和恢复。
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize, Deserialize)]
+#[serde(tag = "error", content = "details")]
 pub enum ApiError {
     /// 网络请求失败
     ///
@@ -14,6 +17,27 @@ pub enum ApiError {
     /// - DNS解析失败
     #[error("网络请求失败: {0}")]
     NetworkFailed(String),
+
+    /// 二维码未找到
+    ///
+    /// 提供的 qr_id 在微博API中不存在或已被清理
+    #[error("二维码未找到: {qr_id}")]
+    QrCodeNotFound { qr_id: String },
+
+    /// 二维码已过期
+    ///
+    /// 二维码超过有效期(通常为180秒)
+    #[error("二维码已过期")]
+    QrCodeExpired {
+        generated_at: DateTime<Utc>,
+        expired_at: DateTime<Utc>,
+    },
+
+    /// 响应格式无效
+    ///
+    /// 微博API返回的数据格式不符合预期
+    #[error("响应格式无效: {0}")]
+    InvalidResponse(String),
 
     /// 二维码生成失败
     ///
@@ -30,8 +54,8 @@ pub enum ApiError {
     /// 触发速率限制
     ///
     /// 微博API返回429或类似的限流响应
-    #[error("请求过于频繁,已被限流: {0}")]
-    RateLimited(String),
+    #[error("请求过于频繁,已被限流")]
+    RateLimitExceeded { retry_after: Option<u64> },
 
     /// JSON解析失败
     ///
@@ -44,12 +68,24 @@ pub enum ApiError {
     /// 微博API返回了非200状态码
     #[error("HTTP错误 {status}: {message}")]
     HttpStatusError { status: u16, message: String },
+
+    /// 依赖安装错误
+    ///
+    /// 依赖安装过程中出现的错误
+    #[error("依赖安装错误: {:?} - {}", error_type, details)]
+    InstallError {
+        /// 安装错误类型
+        error_type: InstallErrorType,
+        /// 详细错误信息
+        details: String,
+    },
 }
 
 /// Cookies验证相关错误
 ///
 /// 处理Cookies有效性验证过程中的失败场景
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize, Deserialize)]
+#[serde(tag = "error", content = "details")]
 pub enum ValidationError {
     /// 调用个人资料API失败
     ///
@@ -85,7 +121,8 @@ pub enum ValidationError {
 /// Redis存储相关错误
 ///
 /// 处理与Redis交互时的失败场景
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize, Deserialize)]
+#[serde(tag = "error", content = "details")]
 pub enum StorageError {
     /// Redis连接失败
     ///
@@ -116,33 +153,6 @@ pub enum StorageError {
     /// 具体的Redis命令(GET/SET/DEL等)执行出错
     #[error("Redis命令执行失败: {0}")]
     CommandFailed(String),
-}
-
-/// 应用程序整体错误
-///
-/// 聚合所有子系统的错误,提供统一的错误处理接口
-#[derive(Debug, Error)]
-pub enum AppError {
-    #[error(transparent)]
-    Api(#[from] ApiError),
-
-    #[error(transparent)]
-    Validation(#[from] ValidationError),
-
-    #[error(transparent)]
-    Storage(#[from] StorageError),
-
-    /// 配置错误
-    ///
-    /// 应用配置缺失或格式错误
-    #[error("配置错误: {0}")]
-    ConfigError(String),
-
-    /// 内部错误
-    ///
-    /// 未预期的运行时错误
-    #[error("内部错误: {0}")]
-    InternalError(String),
 }
 
 /// 实现从reqwest::Error到ApiError的转换
@@ -181,5 +191,136 @@ impl From<serde_json::Error> for ApiError {
 impl From<serde_json::Error> for StorageError {
     fn from(err: serde_json::Error) -> Self {
         StorageError::SerializationError(err.to_string())
+    }
+}
+
+/// 依赖项管理相关错误
+///
+/// 处理依赖检查、安装过程中的失败场景
+#[derive(Debug, Error, Serialize, Deserialize)]
+#[serde(tag = "error", content = "details")]
+pub enum DependencyError {
+    /// 依赖检查失败
+    ///
+    /// 检查依赖项时出现的错误，包含具体的失败原因
+    #[error("Dependency check failed: {0}")]
+    CheckFailed(String),
+
+    /// 依赖项不支持自动安装
+    ///
+    /// 尝试安装 auto_installable=false 的依赖
+    #[error("Dependency '{0}' cannot be auto-installed. Please install manually.")]
+    NotAutoInstallable(String),
+
+    /// 安装失败
+    ///
+    /// 安装过程中出现的各种错误，分类为不同的错误类型
+    #[error("Installation failed: {0}")]
+    InstallFailed(InstallErrorType),
+
+    /// 依赖已满足
+    ///
+    /// 依赖已满足且 force=false 时返回
+    #[error("Dependency '{0}' is already satisfied (version {1})")]
+    AlreadySatisfied(String, String),
+
+    /// 依赖项未找到
+    ///
+    /// 请求的 dependency_id 不存在
+    #[error("Dependency '{0}' not found")]
+    NotFound(String),
+}
+
+/// 安装错误类型
+///
+/// 细分安装失败的具体原因，便于前端针对性处理
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallErrorType {
+    /// 网络错误
+    ///
+    /// 下载依赖包时网络超时、连接失败、DNS解析错误
+    NetworkError,
+
+    /// 权限错误
+    ///
+    /// 安装目录需要管理员权限 (如写入 /usr/local/bin)
+    PermissionDenied,
+
+    /// 磁盘空间不足
+    ///
+    /// 磁盘剩余空间不足
+    DiskSpaceError,
+
+    /// 版本冲突
+    ///
+    /// 系统已存在不兼容的版本且无法覆盖
+    VersionConflict,
+
+    /// 未知错误
+    ///
+    /// 未分类的安装失败 (脚本执行异常、依赖关系解析失败)
+    UnknownError,
+
+    /// 命令执行失败
+    ///
+    /// 安装命令返回非零退出码
+    CommandFailed,
+
+    /// 安装超时
+    ///
+    /// 安装过程超过预设的超时时间
+    TimeoutExpired,
+
+    /// 不支持的操作
+    ///
+    /// 尝试执行不支持的操作 (如安装不支持自动安装的依赖)
+    UnsupportedOperation,
+
+    /// 无效输入
+    ///
+    /// 提供的参数或配置无效
+    InvalidInput,
+}
+
+impl std::fmt::Display for InstallErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InstallErrorType::NetworkError => write!(f, "Network error"),
+            InstallErrorType::PermissionDenied => write!(f, "Permission denied"),
+            InstallErrorType::DiskSpaceError => write!(f, "Disk space error"),
+            InstallErrorType::VersionConflict => write!(f, "Version conflict"),
+            InstallErrorType::UnknownError => write!(f, "Unknown error"),
+            InstallErrorType::CommandFailed => write!(f, "Command failed"),
+            InstallErrorType::TimeoutExpired => write!(f, "Timeout expired"),
+            InstallErrorType::UnsupportedOperation => write!(f, "Unsupported operation"),
+            InstallErrorType::InvalidInput => write!(f, "Invalid input"),
+        }
+    }
+}
+
+/// 实现从std::io::Error到DependencyError的转换
+impl From<std::io::Error> for DependencyError {
+    fn from(err: std::io::Error) -> Self {
+        match err.kind() {
+            std::io::ErrorKind::PermissionDenied => {
+                DependencyError::CheckFailed(format!("Permission denied: {}", err))
+            }
+            std::io::ErrorKind::NotFound => {
+                DependencyError::CheckFailed(format!("File or directory not found: {}", err))
+            }
+            std::io::ErrorKind::ConnectionRefused => {
+                DependencyError::CheckFailed(format!("Connection refused: {}", err))
+            }
+            std::io::ErrorKind::TimedOut => {
+                DependencyError::CheckFailed(format!("Connection timed out: {}", err))
+            }
+            std::io::ErrorKind::UnexpectedEof => {
+                DependencyError::CheckFailed(format!("Unexpected end of file: {}", err))
+            }
+            _ => {
+                DependencyError::CheckFailed(format!("I/O error: {}", err))
+            }
+        }
     }
 }

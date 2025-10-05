@@ -13,6 +13,16 @@
    pnpm install
    ```
 
+3. **Playwright浏览器已安装** ⚡ 重要
+   ```bash
+   cd playwright
+   pnpm exec playwright install chromium
+   cd ..
+   ```
+
+   > ⚠️  **必须执行**: Playwright依赖包安装不会自动下载浏览器二进制文件。
+   > 如果跳过此步骤,二维码生成功能将失败。
+
 ## 开发模式
 
 ### 启动Vite开发服务器

@@ -19,9 +19,9 @@ fn main() {
     let redis_url = std::env::var("REDIS_URL")
         .unwrap_or_else(|_| "redis://localhost:6379".to_string());
     let playwright_login_script = std::env::var("PLAYWRIGHT_LOGIN_SCRIPT")
-        .unwrap_or_else(|_| "./playwright/dist/weibo-login.js".to_string());
+        .unwrap_or_else(|_| "../playwright/dist/weibo-login.js".to_string());
     let playwright_validation_script = std::env::var("PLAYWRIGHT_VALIDATION_SCRIPT")
-        .unwrap_or_else(|_| "./playwright/dist/validate-cookies.js".to_string());
+        .unwrap_or_else(|_| "../playwright/dist/validate-cookies.js".to_string());
 
     // 初始化全局状态
     let app_state = AppState::new(
@@ -41,6 +41,10 @@ fn main() {
             commands::cookies_commands::query_cookies,
             commands::cookies_commands::delete_cookies,
             commands::cookies_commands::list_all_uids,
+            commands::dependency_commands::check_dependencies,
+            commands::dependency_commands::install_dependency,
+            commands::dependency_commands::query_dependency_status,
+            commands::dependency_commands::trigger_manual_check,
         ])
         .run(tauri::generate_context!())
         .expect("启动Tauri应用时发生错误");

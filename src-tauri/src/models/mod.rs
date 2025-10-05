@@ -4,7 +4,6 @@
 //! - errors: 错误类型定义 (API、验证、存储、应用级错误)
 //! - login_session: 登录会话管理 (二维码状态追踪)
 //! - cookies_data: Cookies数据结构 (凭证存储与验证)
-//! - login_event: 前端事件通知 (登录流程审计追踪)
 //!
 //! # 设计原则
 //!
@@ -16,12 +15,18 @@
 //! 5. **日志安全**: 敏感数据不记录到日志 (如 cookies 值)
 
 pub mod cookies_data;
+pub mod dependency;
 pub mod errors;
-pub mod login_event;
 pub mod login_session;
 
 // 重导出常用类型,简化外部引用
 pub use cookies_data::CookiesData;
-pub use errors::{ApiError, StorageError, ValidationError};
-pub use login_event::LoginEvent;
+pub use dependency::{
+    Dependency, DependencyLevel, CheckMethod, CheckStatus, DependencyCheckResult,
+    InstallationTask, InstallStatus
+};
+pub use errors::{
+    ApiError, StorageError, ValidationError,
+    DependencyError, InstallErrorType
+};
 pub use login_session::{LoginSession, QrCodeStatus};

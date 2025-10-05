@@ -31,7 +31,7 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
         return '✓';
       case LoginEventType.QrCodeScanned:
         return '👀';
-      case LoginEventType.ConfirmedSuccess:
+      case LoginEventType.Confirmed:
         return '✓';
       case LoginEventType.ValidationSuccess:
         return '🎉';
@@ -49,7 +49,7 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
       case LoginEventType.ValidationSuccess:
         return 'bg-green-50 text-green-700 border-green-200';
       case LoginEventType.QrCodeScanned:
-      case LoginEventType.ConfirmedSuccess:
+      case LoginEventType.Confirmed:
         return 'bg-yellow-50 text-yellow-700 border-yellow-200';
       case LoginEventType.Error:
       case LoginEventType.QrCodeExpired:
@@ -65,7 +65,7 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
         return '二维码生成成功';
       case LoginEventType.QrCodeScanned:
         return '已扫描,等待确认';
-      case LoginEventType.ConfirmedSuccess:
+      case LoginEventType.Confirmed:
         return '确认登录成功';
       case LoginEventType.ValidationSuccess:
         return `登录成功! 欢迎 ${event.details?.screen_name || event.uid}`;

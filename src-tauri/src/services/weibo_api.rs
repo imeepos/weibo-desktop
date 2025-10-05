@@ -250,44 +250,6 @@ impl WeiboApiClient {
         Ok(None)
     }
 
-    /// 轮询直到终态
-    ///
-    /// 持续轮询直到登录成功/过期。
-    /// 适用于测试场景。
-    ///
-    /// # 参数
-    /// - `session`: 登录会话
-    /// - `poll_interval_ms`: 轮询间隔(毫秒)
-    ///
-    /// # 返回值
-    /// - `Some((uid, cookies))`: 登录成功
-    /// - `None`: 过期或拒绝
-    pub async fn poll_until_final(
-        &self,
-        session: &mut LoginSession,
-        poll_interval_ms: u64,
-    ) -> Result<Option<(String, HashMap<String, String>)>, ApiError> {
-        let poll_interval = std::time::Duration::from_millis(poll_interval_ms);
-
-        loop {
-            if session.is_final_status() {
-                break;
-            }
-
-            if session.is_expired() {
-                session.mark_expired();
-                break;
-            }
-
-            if let Some(result) = self.check_qrcode_status(session).await? {
-                return Ok(Some(result));
-            }
-
-            tokio::time::sleep(poll_interval).await;
-        }
-
-        Ok(None)
-    }
 }
 
 #[cfg(test)]

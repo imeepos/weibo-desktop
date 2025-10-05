@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::process::Command;
 
-use crate::models::{CookiesData, ValidationError};
+use crate::models::ValidationError;
 
 /// Cookies验证服务
 ///
@@ -44,6 +44,7 @@ impl ValidationService {
     ///
     /// # 示例
     /// ```
+    /// use weibo_login::services::ValidationService;
     /// let service = ValidationService::new(
     ///     "/workspace/desktop/playwright/validate-cookies.js".to_string()
     /// );
@@ -164,81 +165,6 @@ impl ValidationService {
         );
 
         Ok((uid, screen_name))
-    }
-
-    /// 验证CookiesData结构
-    ///
-    /// 先进行基础格式验证,再调用Playwright验证有效性。
-    ///
-    /// # 参数
-    /// - `cookies_data`: 待验证的cookies数据
-    ///
-    /// # 返回值
-    /// - `Ok((uid, screen_name))`: 验证成功
-    ///
-    /// # 错误
-    /// - `ValidationError::MissingCookie`: 缺少必需字段
-    /// - `ValidationError::InvalidFormat`: 格式错误
-    /// - `ValidationError::PlaywrightFailed`: Playwright执行失败
-    /// - `ValidationError::ProfileApiFailed`: API返回错误
-    pub async fn validate_cookies_data(
-        &self,
-        cookies_data: &CookiesData,
-    ) -> Result<(String, String), ValidationError> {
-        // 基础验证
-        cookies_data.validate()?;
-
-        // Playwright验证
-        self.validate_cookies(&cookies_data.cookies).await
-    }
-
-    /// 批量验证多个cookies
-    ///
-    /// 并发验证多个账户的cookies,提升效率。
-    ///
-    /// # 参数
-    /// - `cookies_list`: cookies列表
-    /// - `max_concurrent`: 最大并发数,建议3-5
-    ///
-    /// # 返回值
-    /// Vec of Result,每个元素对应一个cookies的验证结果
-    ///
-    /// # 示例
-    /// ```
-    /// let results = service.batch_validate(&cookies_list, 3).await;
-    /// for (i, result) in results.iter().enumerate() {
-    ///     match result {
-    ///         Ok((uid, name)) => println!("Account {}: {} ({})", i, name, uid),
-    ///         Err(e) => println!("Account {} failed: {}", i, e),
-    ///     }
-    /// }
-    /// ```
-    pub async fn batch_validate(
-        &self,
-        cookies_list: &[HashMap<String, String>],
-    ) -> Vec<Result<(String, String), ValidationError>> {
-        tracing::info!(
-            total = %cookies_list.len(),
-            "Starting batch validation"
-        );
-
-        let mut tasks = Vec::new();
-
-        for cookies in cookies_list.iter() {
-            let task = self.validate_cookies(cookies);
-            tasks.push(task);
-        }
-
-        // 并发执行所有任务
-        let results = futures::future::join_all(tasks).await;
-
-        tracing::info!(
-            total = %results.len(),
-            success = %results.iter().filter(|r| r.is_ok()).count(),
-            "Batch validation completed"
-        );
-
-        results
     }
 }
 

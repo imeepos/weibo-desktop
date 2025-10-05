@@ -79,6 +79,11 @@ function loadSession(sessionId: string): SessionData | null {
 async function generateQrcode(): Promise<GenerateResponse> {
   const browser = await chromium.launch({
     headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+    ]
   });
 
   const context = await browser.newContext({
@@ -87,25 +92,65 @@ async function generateQrcode(): Promise<GenerateResponse> {
 
   const page = await context.newPage();
 
-  await page.goto('https://weibo.com/login', {
-    waitUntil: 'networkidle',
-    timeout: 30000,
+  await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog&disp=popup&url=https%3A%2F%2Fweibo.com%2Fnewlogin%3Ftabtype%3Dweibo%26gid%3D102803%26openLoginLayer%3D0%26url%3Dhttps%253A%252F%252Fweibo.com%252F&from=weibopro', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000,
   });
+
+  /// 等待页面加载完成
+  await page.waitForTimeout(3000);
+
+  /// 保存页面快照用于调试
+  const pageContent = await page.content();
+  console.error('DEBUG: Page loaded, title:', await page.title());
+  console.error('DEBUG: URL:', page.url());
 
   /// 尝试点击"扫码登录"
   try {
     const scanTabSelector = 'text=扫码登录';
     await page.waitForSelector(scanTabSelector, { timeout: 3000 });
     await page.click(scanTabSelector);
+    await page.waitForTimeout(2000);
   } catch {
     /// 可能已经在扫码页面,继续
+    console.error('DEBUG: Skip scan tab click');
   }
 
-  /// 等待二维码加载
-  const qrSelector = '.login-qrcode img, .qrcode img, img[src*="qrcode"]';
-  await page.waitForSelector(qrSelector, { timeout: 10000 });
+  /// 尝试多种二维码选择器
+  const qrSelectors = [
+    '.login-qrcode img',
+    '.qrcode img',
+    'img[src*="qrcode"]',
+    'img[alt*="二维码"]',
+    'canvas',
+    '[class*="qrcode"] img',
+    '[class*="qr-code"] img'
+  ];
 
-  const qrImageElement = page.locator(qrSelector).first();
+  let qrImageElement = null;
+  let foundSelector = '';
+
+  for (const selector of qrSelectors) {
+    try {
+      await page.waitForSelector(selector, { timeout: 5000, state: 'visible' });
+      qrImageElement = page.locator(selector).first();
+      foundSelector = selector;
+      console.error(`DEBUG: Found QR code with selector: ${selector}`);
+      break;
+    } catch {
+      console.error(`DEBUG: Selector not found: ${selector}`);
+    }
+  }
+
+  if (!qrImageElement) {
+    /// 保存HTML用于诊断
+    const fs = require('fs');
+    const debugPath = '/workspace/desktop/playwright/.sessions/debug-page.html';
+    fs.writeFileSync(debugPath, pageContent);
+    console.error(`DEBUG: Page HTML saved to ${debugPath}`);
+    throw new Error('QR code element not found with any selector');
+  }
+
   const qrImageSrc = await qrImageElement.getAttribute('src');
 
   if (!qrImageSrc) {
@@ -153,8 +198,9 @@ async function generateQrcode(): Promise<GenerateResponse> {
  *
  * 职责:
  * 1. 恢复浏览器会话
- * 2. 检测登录状态(pending/scanned/confirmed/expired)
- * 3. 登录成功时提取cookies和用户信息
+ * 2. 在二维码页面监听状态变化
+ * 3. 处理过期/扫码/确认状态
+ * 4. 自动刷新过期二维码
  */
 async function checkStatus(sessionId: string): Promise<StatusResponse> {
   const sessionData = loadSession(sessionId);
@@ -162,87 +208,159 @@ async function checkStatus(sessionId: string): Promise<StatusResponse> {
     return { status: 'expired' };
   }
 
-  if (Date.now() > sessionData.expires_at) {
-    return { status: 'expired' };
-  }
-
   const browser = await chromium.launch({
     headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+    ]
   });
 
   const context = await browser.newContext({
     storageState: sessionData.context_state_path,
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
   });
 
   const page = await context.newPage();
 
-  /// 访问首页检查登录状态
-  await page.goto('https://weibo.com/', {
-    waitUntil: 'networkidle',
-    timeout: 15000,
-  });
-
-  const currentUrl = page.url();
-
-  /// 检查是否已登录
-  const isLoggedIn = currentUrl.includes('/home') ||
-                    currentUrl === 'https://weibo.com/' &&
-                    await page.locator('[usercard], .gn_name, .name').count() > 0;
-
-  if (isLoggedIn) {
-    const cookies = await context.cookies();
-    const cookiesMap: Record<string, string> = {};
-    cookies.forEach(cookie => {
-      cookiesMap[cookie.name] = cookie.value;
+  try {
+    /// 访问登录页面
+    await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog&disp=popup&url=https%3A%2F%2Fweibo.com%2Fnewlogin%3Ftabtype%3Dweibo%26gid%3D102803%26openLoginLayer%3D0%26url%3Dhttps%253A%252F%252Fweibo.com%252F&from=weibopro', {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
     });
 
-    /// 提取用户信息
-    const userInfo = await page.evaluate(() => {
-      const userElement = document.querySelector('[usercard]');
-      if (userElement) {
-        const usercard = userElement.getAttribute('usercard');
-        const uidMatch = usercard?.match(/id=(\d+)/);
+    await page.waitForTimeout(2000);
+
+    /// 检查是否已跳转到首页(登录成功)
+    const currentUrl = page.url();
+    if (currentUrl === 'https://weibo.com/' || currentUrl.includes('/home')) {
+      const cookies = await context.cookies();
+      const cookiesMap: Record<string, string> = {};
+      cookies.forEach(cookie => {
+        cookiesMap[cookie.name] = cookie.value;
+      });
+
+      const userInfo = await page.evaluate(() => {
+        const userElement = document.querySelector('[usercard]');
+        if (userElement) {
+          const usercard = userElement.getAttribute('usercard');
+          const uidMatch = usercard?.match(/id=(\d+)/);
+          return {
+            uid: uidMatch?.[1],
+            screen_name: userElement.textContent?.trim(),
+          };
+        }
+
+        const nameElement = document.querySelector('.gn_name, .name');
         return {
-          uid: uidMatch?.[1],
-          screen_name: userElement.textContent?.trim(),
+          uid: undefined,
+          screen_name: nameElement?.textContent?.trim(),
         };
+      });
+
+      await browser.close();
+
+      return {
+        status: 'confirmed',
+        cookies: cookiesMap,
+        uid: userInfo.uid,
+        screen_name: userInfo.screen_name,
+      };
+    }
+
+    /// 确保在扫码页面
+    try {
+      const scanTabSelector = 'text=扫码登录';
+      await page.waitForSelector(scanTabSelector, { timeout: 3000 });
+      await page.click(scanTabSelector);
+      await page.waitForTimeout(1000);
+    } catch {
+      // 已在扫码页面
+    }
+
+    /// 状态检测选择器
+    const expiredSelector = 'text=该二维码已过期';
+    const scannedSelector = 'text=成功扫描，请在手机点击确认以登录';
+    const refreshButtonSelector = 'text=点击刷新';
+
+    /// 检查过期状态
+    const expiredElement = await page.locator(expiredSelector).count();
+    if (expiredElement > 0) {
+      /// 尝试刷新二维码
+      const refreshButton = await page.locator(refreshButtonSelector).count();
+      if (refreshButton > 0) {
+        await page.click(refreshButtonSelector);
+        await page.waitForTimeout(2000);
+
+        /// 更新会话过期时间
+        sessionData.expires_at = Date.now() + 180 * 1000;
+        saveSession(sessionId, sessionData);
+
+        await browser.close();
+        return { status: 'pending' };
       }
 
-      /// 备选方案
-      const nameElement = document.querySelector('.gn_name, .name');
-      return {
-        uid: undefined,
-        screen_name: nameElement?.textContent?.trim(),
-      };
-    });
+      await browser.close();
+      return { status: 'expired' };
+    }
 
-    await browser.close();
-
-    return {
-      status: 'confirmed',
-      cookies: cookiesMap,
-      uid: userInfo.uid,
-      screen_name: userInfo.screen_name,
-    };
-  }
-
-  /// 检查是否回到登录页(已扫码但未确认)
-  if (currentUrl.includes('/login')) {
-    const pageContent = await page.content();
-    const hasScanned = pageContent.includes('已扫描') ||
-                      pageContent.includes('扫描成功') ||
-                      pageContent.includes('请在手机上确认');
-
-    await browser.close();
-
-    if (hasScanned) {
+    /// 检查扫码成功状态
+    const scannedElement = await page.locator(scannedSelector).count();
+    if (scannedElement > 0) {
+      await browser.close();
       return { status: 'scanned' };
     }
+
+    /// 等待URL变化(登录确认)
+    const navigationPromise = page.waitForURL(url => url.includes('weibo.com/') && !url.includes('/sso/'), {
+      timeout: 2000,
+    }).catch(() => null);
+
+    if (await navigationPromise) {
+      const cookies = await context.cookies();
+      const cookiesMap: Record<string, string> = {};
+      cookies.forEach(cookie => {
+        cookiesMap[cookie.name] = cookie.value;
+      });
+
+      const userInfo = await page.evaluate(() => {
+        const userElement = document.querySelector('[usercard]');
+        if (userElement) {
+          const usercard = userElement.getAttribute('usercard');
+          const uidMatch = usercard?.match(/id=(\d+)/);
+          return {
+            uid: uidMatch?.[1],
+            screen_name: userElement.textContent?.trim(),
+          };
+        }
+
+        const nameElement = document.querySelector('.gn_name, .name');
+        return {
+          uid: undefined,
+          screen_name: nameElement?.textContent?.trim(),
+        };
+      });
+
+      await browser.close();
+
+      return {
+        status: 'confirmed',
+        cookies: cookiesMap,
+        uid: userInfo.uid,
+        screen_name: userInfo.screen_name,
+      };
+    }
+
+    /// 默认pending状态
+    await browser.close();
+    return { status: 'pending' };
+
+  } catch (error) {
+    await browser.close();
+    throw error;
   }
-
-  await browser.close();
-
-  return { status: 'pending' };
 }
 
 /**

@@ -123,6 +123,7 @@ struct SaveCookiesResponse {
 
 /// 保存cookies的错误
 #[derive(Debug)]
+#[allow(dead_code)]
 enum SaveCookiesError {
     InvalidFormat(String),
     MissingCookie(String),

@@ -14,16 +14,18 @@
 
 **函数签名**:
 ```typescript
-invoke<GenerateQrcodeResponse>('generate_qrcode')
+invoke<QrCodeResponse>('generate_qrcode')
 ```
 
 **参数**: 无
 
 **返回值**:
 ```typescript
-interface GenerateQrcodeResponse {
-  session: LoginSession;
-  qr_image: string; // base64编码的PNG图片
+interface QrCodeResponse {
+  qr_id: string;          // 二维码唯一标识,用于后续轮询
+  qr_image: string;       // Base64编码的PNG图片,可直接用于<img src={...} />
+  expires_at: string;     // 过期时间 (ISO 8601格式)
+  expires_in: number;     // 有效期秒数 (通常为180秒)
 }
 ```
 
@@ -31,14 +33,18 @@ interface GenerateQrcodeResponse {
 ```typescript
 import { invoke } from '@tauri-apps/api/tauri';
 
-const response = await invoke<GenerateQrcodeResponse>('generate_qrcode');
-console.log('二维码ID:', response.session.qr_id);
-console.log('过期时间:', response.session.expires_at);
+const response = await invoke<QrCodeResponse>('generate_qrcode');
+console.log('二维码ID:', response.qr_id);
+console.log('有效期:', response.expires_in, '秒');
+
+// 显示二维码
+<img src={`data:image/png;base64,${response.qr_image}`} />
 ```
 
 **错误**:
-- `"Failed to generate QR code: NetworkFailed"` - 网络错误
-- `"Failed to generate QR code: RateLimited"` - 请求过于频繁
+- `NetworkFailed` - 网络错误
+- `InvalidResponse` - 微博API响应异常
+- `RateLimitExceeded` - 请求过于频繁
 
 ---
 
@@ -48,59 +54,94 @@ console.log('过期时间:', response.session.expires_at);
 
 **函数签名**:
 ```typescript
-invoke<PollStatusResponse>('poll_login_status', { qrId: string })
+invoke<LoginStatusResponse>('poll_login_status', { qrId: string })
 ```
 
 **参数**:
 ```typescript
 {
-  qrId: string; // 二维码ID (来自generate_qrcode)
+  qrId: string; // 二维码ID (来自generate_qrcode的qr_id字段)
 }
 ```
 
 **返回值**:
 ```typescript
-interface PollStatusResponse {
-  event: LoginEvent;
-  is_final: boolean; // true表示终态(成功/失败/过期)
+interface LoginStatusResponse {
+  status: 'pending' | 'scanned' | 'confirmed' | 'expired';
+  cookies?: CookiesData;  // 仅在 status === 'confirmed' 时存在
+  updated_at: string;     // 状态更新时间 (ISO 8601)
 }
 ```
 
+**状态说明**:
+- `pending` - 待扫描
+- `scanned` - 已扫描,待确认
+- `confirmed` - 已确认,登录成功 (包含cookies字段)
+- `expired` - 二维码已过期
+
 **示例**:
 ```typescript
-const response = await invoke<PollStatusResponse>('poll_login_status', {
+const response = await invoke<LoginStatusResponse>('poll_login_status', {
   qrId: 'qr_abc123'
 });
 
-if (response.event.event_type === 'validation_success') {
-  console.log('登录成功!', response.event.details.screen_name);
+// 根据状态处理
+switch (response.status) {
+  case 'pending':
+    console.log('等待扫码...');
+    break;
+  case 'scanned':
+    console.log('已扫码,等待确认...');
+    break;
+  case 'confirmed':
+    console.log('登录成功!', response.cookies?.screen_name);
+    // cookies 已自动验证并保存到Redis
+    break;
+  case 'expired':
+    console.log('二维码已过期,请重新生成');
+    break;
 }
 ```
 
 **轮询建议**:
-- 间隔: 3秒
-- 直到 `is_final === true`
-- 最长轮询3分钟
+- 间隔: 2-5秒 (可使用exponential backoff优化)
+- 终止条件: `status === 'confirmed'` 或 `status === 'expired'`
+- 最长轮询时间: 3分钟 (与二维码有效期一致)
+
+**自动化流程**:
+当 `status === 'confirmed'` 时,后端已自动完成:
+1. Playwright验证cookies有效性
+2. 保存到Redis (30天TTL)
+3. 返回完整的CookiesData
+
+**错误**:
+- `QrCodeNotFound` - 二维码不存在
+- `QrCodeExpired` - 二维码已过期
+- `NetworkFailed` - 网络错误
 
 ---
 
 ### 3. save_cookies
 
-手动保存Cookies (通常由poll_login_status自动调用)。
+手动保存Cookies。
+
+**说明**: 此命令通常由 `poll_login_status` 自动调用,无需手动使用。仅在特殊场景(如导入已有cookies)时使用。
 
 **函数签名**:
 ```typescript
 invoke<SaveCookiesResponse>('save_cookies', {
-  request: SaveCookiesRequest
+  uid: string;
+  cookies: Record<string, string>;
+  screenName?: string;
 })
 ```
 
 **参数**:
 ```typescript
-interface SaveCookiesRequest {
-  uid: string;
-  cookies: Record<string, string>;
-  screen_name?: string;
+{
+  uid: string;                        // 微博用户ID
+  cookies: Record<string, string>;    // Cookies键值对 (必须包含SUB)
+  screenName?: string;                // 用户昵称 (可选,验证时会自动获取)
 }
 ```
 
@@ -108,28 +149,37 @@ interface SaveCookiesRequest {
 ```typescript
 interface SaveCookiesResponse {
   success: boolean;
-  redis_key: string;
-  validation_duration_ms: number;
-  is_overwrite: boolean;
+  redis_key: string;                // Redis存储键
+  validation_duration_ms: number;   // 验证耗时(毫秒)
+  is_overwrite: boolean;            // 是否覆盖已存在的cookies
 }
 ```
 
 **示例**:
 ```typescript
 const response = await invoke<SaveCookiesResponse>('save_cookies', {
-  request: {
-    uid: '1234567890',
-    cookies: { SUB: 'xxx', SUBP: 'yyy' },
-    screen_name: '用户昵称'
-  }
+  uid: '1234567890',
+  cookies: {
+    SUB: '_2A25xxx...',
+    SUBP: '0033xxx...'
+  },
+  screenName: '用户昵称'  // 可选
 });
 
 console.log('验证耗时:', response.validation_duration_ms, 'ms');
+console.log('是否覆盖:', response.is_overwrite);
 ```
 
+**验证流程**:
+1. Playwright调用微博资料API验证cookies有效性
+2. 提取并验证UID匹配
+3. 保存到Redis (30天TTL)
+
 **错误**:
-- `"Validation failed: ProfileApiFailed"` - Cookies无效
-- `"Failed to save: RedisConnectionFailed"` - Redis连接失败
+- `ProfileApiFailed` - Cookies无效或已过期
+- `MissingCookie` - 缺少必需的cookie字段
+- `UidMismatch` - UID不匹配
+- `RedisConnectionFailed` - Redis连接失败
 
 ---
 
@@ -231,7 +281,7 @@ console.log('已保存', uids.length, '个账户');
 enum LoginEventType {
   QrCodeGenerated = 'qr_code_generated',
   QrCodeScanned = 'qr_code_scanned',
-  ConfirmedSuccess = 'confirmed_success',
+  Confirmed = 'confirmed',
   ValidationSuccess = 'validation_success',
   QrCodeExpired = 'qr_code_expired',
   Error = 'error',
@@ -252,7 +302,7 @@ enum LoginEventType {
 {}
 ```
 
-**ConfirmedSuccess**:
+**Confirmed**:
 ```json
 { "uid": "1234567890" }
 ```
@@ -279,22 +329,66 @@ enum LoginEventType {
 
 ## 错误处理最佳实践
 
+Tauri命令抛出的错误对象结构:
+
+```typescript
+// Tauri错误对象格式
+interface TauriError {
+  error: string;      // 错误类型标识
+  message?: string;   // 错误详细信息
+  [key: string]: any; // 其他字段 (如status, uid等)
+}
+```
+
+**推荐做法**:
+
 ```typescript
 try {
-  const response = await invoke<GenerateQrcodeResponse>('generate_qrcode');
+  const response = await invoke<QrCodeResponse>('generate_qrcode');
   // 成功处理
-} catch (error) {
-  // error 是字符串类型
-  if (error.includes('NetworkFailed')) {
-    // 网络错误,提示用户检查连接
-  } else if (error.includes('RateLimited')) {
-    // 限流,建议60秒后重试
-  } else {
-    // 其他错误
-    console.error('未知错误:', error);
+} catch (err) {
+  // err 可能是字符串或对象,需要安全解析
+  const error = typeof err === 'string'
+    ? { error: err }
+    : err as TauriError;
+
+  // 根据error字段判断错误类型
+  switch (error.error) {
+    case 'NetworkFailed':
+      console.error('网络错误,请检查连接');
+      break;
+    case 'RateLimitExceeded':
+      console.error('请求过于频繁,请60秒后重试');
+      break;
+    case 'QrCodeExpired':
+      console.error('二维码已过期,请重新生成');
+      break;
+    case 'ProfileApiFailed':
+      console.error('Cookies验证失败:', error.message);
+      break;
+    case 'UidMismatch':
+      console.error(`UID不匹配: ${error.expected} vs ${error.actual}`);
+      break;
+    default:
+      console.error('未知错误:', error);
   }
 }
 ```
+
+**常见错误类型**:
+
+| 错误类型 | 触发命令 | 说明 |
+|---------|---------|------|
+| `NetworkFailed` | generate_qrcode, poll_login_status | 网络连接失败 |
+| `InvalidResponse` | generate_qrcode | 微博API响应异常 |
+| `RateLimitExceeded` | generate_qrcode | 请求频率超限 |
+| `QrCodeExpired` | poll_login_status | 二维码已过期 |
+| `QrCodeNotFound` | poll_login_status | 二维码不存在 |
+| `ProfileApiFailed` | save_cookies | Cookies无效 |
+| `MissingCookie` | save_cookies | 缺少必需cookie |
+| `UidMismatch` | save_cookies | UID不匹配 |
+| `RedisConnectionFailed` | save_cookies, query_cookies | Redis连接失败 |
+| `NotFound` | query_cookies | Cookies不存在 |
 
 ---
 

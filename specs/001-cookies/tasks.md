@@ -249,7 +249,7 @@ cargo build  # 应无错误
 **实现要点**:
 - 参考 `/workspace/desktop/specs/001-cookies/data-model.md`
 - 包含 `QrCodeStatus` 枚举
-- 实现 `validate()`, `is_expired()`, `is_final_status()` 方法
+- 实现 `is_expired()` 方法
 - 时间戳递增验证
 
 **单元测试**:

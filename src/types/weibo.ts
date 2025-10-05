@@ -9,9 +9,8 @@
 export enum QrCodeStatus {
   Pending = 'pending',
   Scanned = 'scanned',
-  ConfirmedSuccess = 'confirmed_success',
+  Confirmed = 'confirmed',
   Expired = 'expired',
-  Rejected = 'rejected',
 }
 
 /// 登录会话 - 时间的容器
@@ -38,7 +37,7 @@ export interface CookiesData {
 export enum LoginEventType {
   QrCodeGenerated = 'qr_code_generated',
   QrCodeScanned = 'qr_code_scanned',
-  ConfirmedSuccess = 'confirmed_success',
+  Confirmed = 'confirmed',
   ValidationSuccess = 'validation_success',
   QrCodeExpired = 'qr_code_expired',
   Error = 'error',
@@ -55,14 +54,17 @@ export interface LoginEvent {
 
 /// 生成二维码响应
 export interface GenerateQrcodeResponse {
-  session: LoginSession;
-  qr_image: string; // base64编码的PNG图像
+  qr_id: string;
+  qr_image: string;
+  expires_at: string;
+  expires_in: number;
 }
 
 /// 轮询状态响应
 export interface PollStatusResponse {
-  event: LoginEvent;
-  is_final: boolean;
+  status: QrCodeStatus;
+  cookies?: CookiesData;
+  updated_at: string;
 }
 
 /// 保存Cookies响应

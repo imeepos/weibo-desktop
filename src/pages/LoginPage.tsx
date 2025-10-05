@@ -2,12 +2,69 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { QrcodeDisplay } from '../components/QrcodeDisplay';
 import { LoginStatus } from '../components/LoginStatus';
+import { handleTauriError } from '../utils/errorHandler';
 import {
   GenerateQrcodeResponse,
   PollStatusResponse,
   LoginEvent,
   LoginEventType,
+  QrCodeStatus,
 } from '../types/weibo';
+
+/**
+ * 状态映射: QrCodeStatus -> LoginEvent
+ *
+ * 将后端的状态枚举转换为前端的事件对象
+ * 每个状态转换都是一个有意义的时刻
+ */
+const mapStatusToEvent = (
+  sessionId: string,
+  response: PollStatusResponse
+): LoginEvent | null => {
+  const { status, cookies, updated_at } = response;
+
+  switch (status) {
+    case QrCodeStatus.Scanned:
+      return {
+        event_type: LoginEventType.QrCodeScanned,
+        timestamp: updated_at,
+        session_id: sessionId,
+        details: {},
+      };
+
+    case QrCodeStatus.Confirmed:
+      if (cookies) {
+        return {
+          event_type: LoginEventType.ValidationSuccess,
+          timestamp: updated_at,
+          session_id: sessionId,
+          uid: cookies.uid,
+          details: {
+            screen_name: cookies.screen_name,
+            redis_key: cookies.redis_key,
+          },
+        };
+      }
+      return {
+        event_type: LoginEventType.Confirmed,
+        timestamp: updated_at,
+        session_id: sessionId,
+        details: {},
+      };
+
+    case QrCodeStatus.Expired:
+      return {
+        event_type: LoginEventType.QrCodeExpired,
+        timestamp: updated_at,
+        session_id: sessionId,
+        details: {},
+      };
+
+    case QrCodeStatus.Pending:
+    default:
+      return null;
+  }
+};
 
 /**
  * 微博扫码登录页面
@@ -34,13 +91,13 @@ export const LoginPage = () => {
       setCurrentEvent({
         event_type: LoginEventType.QrCodeGenerated,
         timestamp: new Date().toISOString(),
-        session_id: response.session.qr_id,
+        session_id: response.qr_id,
         details: {},
       });
 
-      startPolling(response.session.qr_id);
+      startPolling(response.qr_id);
     } catch (err) {
-      setError(err as string);
+      setError(handleTauriError(err));
       console.error('生成二维码失败:', err);
     } finally {
       setIsGenerating(false);
@@ -56,16 +113,24 @@ export const LoginPage = () => {
           qrId,
         });
 
-        setCurrentEvent(response.event);
+        // 状态机映射: status -> LoginEvent
+        const event = mapStatusToEvent(qrId, response);
+        if (event) {
+          setCurrentEvent(event);
+        }
 
-        if (response.is_final) {
+        // 终止条件: confirmed 且有 cookies,或 expired
+        if (
+          (response.status === 'confirmed' && response.cookies) ||
+          response.status === 'expired'
+        ) {
           break;
         }
 
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     } catch (err) {
-      setError(err as string);
+      setError(handleTauriError(err));
       console.error('轮询失败:', err);
     } finally {
       setIsPolling(false);
@@ -77,7 +142,7 @@ export const LoginPage = () => {
       setCurrentEvent({
         event_type: LoginEventType.QrCodeExpired,
         timestamp: new Date().toISOString(),
-        session_id: qrData?.session.qr_id || '',
+        session_id: qrData?.qr_id || '',
         details: {},
       });
     }
@@ -105,8 +170,9 @@ export const LoginPage = () => {
 
         {qrData && (
           <QrcodeDisplay
-            session={qrData.session}
+            qrId={qrData.qr_id}
             qrImage={qrData.qr_image}
+            expiresAt={qrData.expires_at}
             onExpired={handleExpired}
           />
         )}

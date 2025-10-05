@@ -1,37 +1,31 @@
 import { useEffect, useState } from 'react';
-import { LoginSession, QrCodeStatus } from '../types/weibo';
+import { QrCodeStatus } from '../types/weibo';
 
 interface QrcodeDisplayProps {
-  session: LoginSession;
+  qrId: string;
   qrImage: string;
+  expiresAt: string;
   onExpired: () => void;
 }
 
-/**
- * 二维码显示组件
- *
- * 职责:
- * - 展示二维码图像
- * - 追踪时间流逝
- * - 反馈当前状态
- *
- * 设计哲学: 时间是不可逆的,状态是清晰的
- */
 export const QrcodeDisplay = ({
-  session,
+  qrId,
   qrImage,
+  expiresAt,
   onExpired,
 }: QrcodeDisplayProps) => {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [status, setStatus] = useState<QrCodeStatus>(QrCodeStatus.Pending);
 
   useEffect(() => {
     const updateRemaining = () => {
       const now = new Date().getTime();
-      const expiresAt = new Date(session.expires_at).getTime();
-      const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+      const expiresAtTime = new Date(expiresAt).getTime();
+      const remaining = Math.max(0, Math.floor((expiresAtTime - now) / 1000));
       setRemainingSeconds(remaining);
 
       if (remaining === 0) {
+        setStatus(QrCodeStatus.Expired);
         onExpired();
       }
     };
@@ -40,42 +34,39 @@ export const QrcodeDisplay = ({
     const interval = setInterval(updateRemaining, 1000);
 
     return () => clearInterval(interval);
-  }, [session.expires_at, onExpired]);
+  }, [expiresAt, onExpired]);
 
   const getStatusText = (): string => {
-    switch (session.status) {
+    switch (status) {
       case QrCodeStatus.Pending:
         return '请使用微博App扫描二维码';
       case QrCodeStatus.Scanned:
         return '已扫描,请在手机上确认登录';
-      case QrCodeStatus.ConfirmedSuccess:
+      case QrCodeStatus.Confirmed:
         return '登录成功!';
       case QrCodeStatus.Expired:
         return '二维码已过期';
-      case QrCodeStatus.Rejected:
-        return '用户拒绝登录';
       default:
         return '';
     }
   };
 
   const getStatusColor = (): string => {
-    switch (session.status) {
+    switch (status) {
       case QrCodeStatus.Pending:
         return 'text-blue-600';
       case QrCodeStatus.Scanned:
         return 'text-yellow-600';
-      case QrCodeStatus.ConfirmedSuccess:
+      case QrCodeStatus.Confirmed:
         return 'text-green-600';
       case QrCodeStatus.Expired:
-      case QrCodeStatus.Rejected:
         return 'text-red-600';
       default:
         return 'text-gray-600';
     }
   };
 
-  const isExpired = session.status === QrCodeStatus.Expired;
+  const isExpired = status === QrCodeStatus.Expired;
 
   return (
     <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-lg shadow-lg">
@@ -96,7 +87,7 @@ export const QrcodeDisplay = ({
         {getStatusText()}
       </p>
 
-      {session.status === QrCodeStatus.Pending && (
+      {status === QrCodeStatus.Pending && (
         <div className="flex items-center gap-2 text-gray-600">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -106,7 +97,7 @@ export const QrcodeDisplay = ({
       )}
 
       <p className="text-xs text-gray-400 font-mono">
-        会话ID: {session.qr_id.substring(0, 12)}...
+        会话ID: {qrId.substring(0, 12)}...
       </p>
     </div>
   );

@@ -29,7 +29,7 @@ mod e2e_tests {
         let validator = Arc::new(MockValidationService::new_success());
 
         // 2. 生成二维码 (模拟)
-        let qr_id = "test_qr_123";
+        let _qr_id = "test_qr_123"; // 仅用于文档说明,实际测试中未使用
         let uid = "1234567890";
 
         // 3. 模拟扫码后获取cookies
