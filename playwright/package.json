@@ -1,13 +1,15 @@
 {
-  "name": "weibo-cookies-validator",
+  "name": "weibo-playwright-scripts",
   "version": "1.0.0",
-  "description": "Playwright script to validate Weibo cookies",
-  "main": "dist/validate-cookies.js",
+  "description": "Playwright scripts for Weibo login and validation",
   "scripts": {
     "build": "tsc",
+    "build:login": "tsc src/weibo-login.ts --outDir dist",
+    "build:validate": "tsc src/validate-cookies.ts --outDir dist",
+    "build:all": "npm run build",
     "watch": "tsc --watch",
-    "test": "node dist/validate-cookies.js '{\"SUB\":\"test\"}'",
-    "validate": "node dist/validate-cookies.js"
+    "test:login": "node dist/weibo-login.js generate",
+    "test:validate": "node dist/validate-cookies.js '{\"SUB\":\"test\"}'"
   },
   "dependencies": {
     "playwright": "^1.40.0"

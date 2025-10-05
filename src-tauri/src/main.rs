@@ -13,19 +13,23 @@ fn main() {
     // 初始化日志系统
     utils::logger::init().expect("日志系统初始化失败");
 
-    tracing::info!("Application starting...");
+    tracing::info!("Application starting (Playwright mode)...");
 
     // 读取配置 - 环境变量提供核心参数
     let redis_url = std::env::var("REDIS_URL")
         .unwrap_or_else(|_| "redis://localhost:6379".to_string());
-    let weibo_app_key = std::env::var("WEIBO_APP_KEY")
-        .expect("WEIBO_APP_KEY environment variable not set");
-    let playwright_script_path = std::env::var("PLAYWRIGHT_SCRIPT_PATH")
+    let playwright_login_script = std::env::var("PLAYWRIGHT_LOGIN_SCRIPT")
+        .unwrap_or_else(|_| "./playwright/dist/weibo-login.js".to_string());
+    let playwright_validation_script = std::env::var("PLAYWRIGHT_VALIDATION_SCRIPT")
         .unwrap_or_else(|_| "./playwright/dist/validate-cookies.js".to_string());
 
     // 初始化全局状态
-    let app_state = AppState::new(&redis_url, &weibo_app_key, &playwright_script_path)
-        .expect("Failed to initialize AppState");
+    let app_state = AppState::new(
+        &redis_url,
+        &playwright_login_script,
+        &playwright_validation_script,
+    )
+    .expect("Failed to initialize AppState");
 
     // 启动Tauri应用
     tauri::Builder::default()
