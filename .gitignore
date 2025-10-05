@@ -31,6 +31,7 @@ src-tauri/target/
 # Playwright
 playwright/dist/
 playwright/.cache/
+playwright/.sessions/
 
 # E2E 测试结果
 test-results/
