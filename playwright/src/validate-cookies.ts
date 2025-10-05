@@ -51,7 +51,22 @@ function convertToCookies(inputCookies: InputCookies): Cookie[] {
 }
 
 /**
+ * 微博VIP中心API响应格式
+ */
+interface VipCenterResponse {
+  code: number;
+  data?: {
+    uid?: string;
+    nickname?: string;
+  };
+  msg?: string;
+}
+
+/**
  * 验证cookies有效性
+ *
+ * 使用微博VIP中心API验证cookies,该API返回用户的uid和昵称。
+ * 成功标准: code === 100000 且存在 data.uid
  */
 async function validateCookies(inputCookies: InputCookies): Promise<ValidationResult> {
   const browser = await chromium.launch({
@@ -61,68 +76,42 @@ async function validateCookies(inputCookies: InputCookies): Promise<ValidationRe
 
   try {
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     });
 
-    // 设置cookies
     const cookies = convertToCookies(inputCookies);
     await context.addCookies(cookies);
 
-    // 访问微博个人资料API
-    // 注意: 这里使用的是微博移动端API,实际URL可能需要根据微博开放平台调整
-    const page = await context.newPage();
-
-    // 方案1: 访问个人主页,从HTML中提取信息
-    const response = await page.goto('https://m.weibo.cn/profile/info', {
-      waitUntil: 'networkidle',
+    // 使用context.request直接调用VIP中心API,优雅且高效
+    const response = await context.request.get('https://vip.weibo.com/aj/vipcenter/user', {
+      headers: {
+        'accept': 'application/json, text/plain, */*',
+        'referer': 'https://vip.weibo.com/home',
+      },
       timeout: 10000,
     });
 
-    if (!response || !response.ok()) {
+    if (!response.ok()) {
       return {
         valid: false,
-        error: `HTTP ${response?.status() || 'N/A'}: Failed to load profile`,
+        error: `HTTP ${response.status()}: Failed to access VIP center`,
       };
     }
 
-    // 尝试从页面中提取JSON数据
-    const content = await page.content();
+    const vipData: VipCenterResponse = await response.json();
 
-    // 微博移动端会在页面中嵌入JSON数据
-    const jsonMatch = content.match(/\$render_data\s*=\s*(\[.*?\])\[0\]/s);
-    if (!jsonMatch) {
-      // 如果未找到JSON,可能是未登录
+    // 验证响应格式和必要字段
+    if (vipData.code !== 100000 || !vipData.data?.uid) {
       return {
         valid: false,
-        error: 'Not logged in or cookies invalid',
-      };
-    }
-
-    const renderData = JSON.parse(jsonMatch[1])[0];
-    const profileData = renderData?.status?.user || renderData?.user;
-
-    if (!profileData) {
-      return {
-        valid: false,
-        error: 'Failed to parse user profile',
-      };
-    }
-
-    // 提取UID和昵称
-    const uid = profileData.id?.toString() || profileData.idstr;
-    const screenName = profileData.screen_name;
-
-    if (!uid) {
-      return {
-        valid: false,
-        error: 'UID not found in profile',
+        error: vipData.msg || 'Invalid cookies or missing uid',
       };
     }
 
     return {
       valid: true,
-      uid,
-      screen_name: screenName || 'Unknown',
+      uid: vipData.data.uid,
+      screen_name: vipData.data.nickname || 'Unknown',
     };
 
   } catch (error) {

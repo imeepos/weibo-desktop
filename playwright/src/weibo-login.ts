@@ -33,6 +33,9 @@ interface StatusResponse {
   cookies?: Record<string, string>;
   uid?: string;
   screen_name?: string;
+  qr_refreshed?: boolean;
+  qr_image?: string;
+  error?: string;
 }
 
 /// 会话数据
@@ -41,6 +44,16 @@ interface SessionData {
   context_state_path: string;
   created_at: number;
   expires_at: number;
+}
+
+/// 微博VIP中心API响应
+interface VipCenterResponse {
+  code: number;
+  data?: {
+    uid?: string;
+    nickname?: string;
+  };
+  msg?: string;
 }
 
 function ensureSessionsDir(): void {
@@ -66,6 +79,58 @@ function loadSession(sessionId: string): SessionData | null {
   }
   const content = fs.readFileSync(filePath, 'utf-8');
   return JSON.parse(content);
+}
+
+/**
+ * 验证cookies有效性并提取用户信息
+ *
+ * 职责:
+ * 1. 调用微博VIP中心API验证cookies
+ * 2. 提取uid和nickname
+ * 3. 返回验证结果
+ *
+ * 此函数是登录流程的验证锚点,确保cookies真实有效
+ */
+async function verifyCookiesAndExtractUserInfo(
+  context: BrowserContext
+): Promise<{ valid: boolean; uid?: string; screen_name?: string; error?: string }> {
+  try {
+    const response = await context.request.get('https://vip.weibo.com/aj/vipcenter/user', {
+      headers: {
+        'accept': 'application/json, text/plain, */*',
+        'referer': 'https://vip.weibo.com/home',
+      },
+      timeout: 10000,
+    });
+
+    if (!response.ok()) {
+      return {
+        valid: false,
+        error: `HTTP ${response.status()}: Failed to access VIP center`,
+      };
+    }
+
+    const vipData: VipCenterResponse = await response.json();
+
+    if (vipData.code !== 100000 || !vipData.data?.uid) {
+      return {
+        valid: false,
+        error: vipData.msg || 'Invalid cookies or missing uid',
+      };
+    }
+
+    return {
+      valid: true,
+      uid: vipData.data.uid,
+      screen_name: vipData.data.nickname || 'Unknown',
+    };
+
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /**
@@ -236,37 +301,30 @@ async function checkStatus(sessionId: string): Promise<StatusResponse> {
     /// 检查是否已跳转到首页(登录成功)
     const currentUrl = page.url();
     if (currentUrl === 'https://weibo.com/' || currentUrl.includes('/home')) {
+      /// 提取cookies
       const cookies = await context.cookies();
       const cookiesMap: Record<string, string> = {};
       cookies.forEach(cookie => {
         cookiesMap[cookie.name] = cookie.value;
       });
 
-      const userInfo = await page.evaluate(() => {
-        const userElement = document.querySelector('[usercard]');
-        if (userElement) {
-          const usercard = userElement.getAttribute('usercard');
-          const uidMatch = usercard?.match(/id=(\d+)/);
-          return {
-            uid: uidMatch?.[1],
-            screen_name: userElement.textContent?.trim(),
-          };
-        }
-
-        const nameElement = document.querySelector('.gn_name, .name');
-        return {
-          uid: undefined,
-          screen_name: nameElement?.textContent?.trim(),
-        };
-      });
+      /// 验证cookies并提取用户信息
+      const verification = await verifyCookiesAndExtractUserInfo(context);
 
       await browser.close();
+
+      if (!verification.valid) {
+        return {
+          status: 'pending',
+          error: verification.error || 'Cookie validation failed',
+        };
+      }
 
       return {
         status: 'confirmed',
         cookies: cookiesMap,
-        uid: userInfo.uid,
-        screen_name: userInfo.screen_name,
+        uid: verification.uid,
+        screen_name: verification.screen_name,
       };
     }
 
@@ -281,9 +339,9 @@ async function checkStatus(sessionId: string): Promise<StatusResponse> {
     }
 
     /// 状态检测选择器
-    const expiredSelector = 'text=该二维码已过期';
-    const scannedSelector = 'text=成功扫描，请在手机点击确认以登录';
-    const refreshButtonSelector = 'text=点击刷新';
+    const expiredSelector = 'div.absolute.top-28.break-all.w-full.px-8.text-xs.text-center';
+    const scannedSelector = 'div.absolute.top-28.break-all.w-full.px-8.text-xs.text-center:has-text("成功扫描")';
+    const refreshButtonSelector = 'a.absolute.top-36.break-all.w-full.px-8.text-xs.text-center.text-brand';
 
     /// 检查过期状态
     const expiredElement = await page.locator(expiredSelector).count();
@@ -294,12 +352,60 @@ async function checkStatus(sessionId: string): Promise<StatusResponse> {
         await page.click(refreshButtonSelector);
         await page.waitForTimeout(2000);
 
-        /// 更新会话过期时间
-        sessionData.expires_at = Date.now() + 180 * 1000;
-        saveSession(sessionId, sessionData);
+        /// 重新提取二维码图片
+        const qrSelectors = [
+          '.login-qrcode img',
+          '.qrcode img',
+          'img[src*="qrcode"]',
+          'img[alt*="二维码"]',
+          '[class*="qrcode"] img',
+          '[class*="qr-code"] img'
+        ];
 
+        let qrImageElement = null;
+        for (const selector of qrSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 3000, state: 'visible' });
+            qrImageElement = page.locator(selector).first();
+            break;
+          } catch {
+            continue;
+          }
+        }
+
+        if (qrImageElement) {
+          const qrImageSrc = await qrImageElement.getAttribute('src');
+          if (qrImageSrc) {
+            let qrImageBase64: string;
+            if (qrImageSrc.startsWith('data:image')) {
+              qrImageBase64 = qrImageSrc.split(',')[1];
+            } else {
+              const absoluteUrl = new URL(qrImageSrc, page.url()).href;
+              const response = await page.goto(absoluteUrl);
+              if (response) {
+                const imageBuffer = await response.body();
+                qrImageBase64 = imageBuffer.toString('base64');
+              } else {
+                throw new Error('Failed to fetch refreshed QR code image');
+              }
+            }
+
+            /// 更新会话过期时间
+            sessionData.expires_at = Date.now() + 180 * 1000;
+            saveSession(sessionId, sessionData);
+
+            await browser.close();
+            return {
+              status: 'pending',
+              qr_refreshed: true,
+              qr_image: qrImageBase64,
+            };
+          }
+        }
+
+        /// 无法提取新二维码,返回过期
         await browser.close();
-        return { status: 'pending' };
+        return { status: 'expired' };
       }
 
       await browser.close();
@@ -313,43 +419,42 @@ async function checkStatus(sessionId: string): Promise<StatusResponse> {
       return { status: 'scanned' };
     }
 
-    /// 等待URL变化(登录确认)
-    const navigationPromise = page.waitForURL(url => url.includes('weibo.com/') && !url.includes('/sso/'), {
-      timeout: 2000,
+    /// 等待URL变化(登录确认) - 用户在手机端点击确认后页面会跳转到微博首页
+    const navigationPromise = page.waitForURL(url => {
+      const urlStr = url.toString();
+      return urlStr.includes('weibo.com') && !urlStr.includes('/sso/');
+    }, {
+      timeout: 30000,
     }).catch(() => null);
 
     if (await navigationPromise) {
+      /// 页面跳转成功,等待页面稳定
+      await page.waitForLoadState('domcontentloaded');
+
+      /// 提取cookies
       const cookies = await context.cookies();
       const cookiesMap: Record<string, string> = {};
       cookies.forEach(cookie => {
         cookiesMap[cookie.name] = cookie.value;
       });
 
-      const userInfo = await page.evaluate(() => {
-        const userElement = document.querySelector('[usercard]');
-        if (userElement) {
-          const usercard = userElement.getAttribute('usercard');
-          const uidMatch = usercard?.match(/id=(\d+)/);
-          return {
-            uid: uidMatch?.[1],
-            screen_name: userElement.textContent?.trim(),
-          };
-        }
-
-        const nameElement = document.querySelector('.gn_name, .name');
-        return {
-          uid: undefined,
-          screen_name: nameElement?.textContent?.trim(),
-        };
-      });
+      /// 验证cookies并提取用户信息
+      const verification = await verifyCookiesAndExtractUserInfo(context);
 
       await browser.close();
+
+      if (!verification.valid) {
+        return {
+          status: 'pending',
+          error: verification.error || 'Cookie validation failed',
+        };
+      }
 
       return {
         status: 'confirmed',
         cookies: cookiesMap,
-        uid: userInfo.uid,
-        screen_name: userInfo.screen_name,
+        uid: verification.uid,
+        screen_name: verification.screen_name,
       };
     }
 
