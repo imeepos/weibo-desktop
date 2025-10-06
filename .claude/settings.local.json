@@ -4,7 +4,9 @@
       "Bash(cat:*)",
       "Bash(netstat:*)",
       "Read(//tmp/**)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "WebSearch",
+      "Bash(xxd:*)"
     ],
     "deny": [],
     "ask": []
