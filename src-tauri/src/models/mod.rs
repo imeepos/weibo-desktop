@@ -18,6 +18,7 @@ pub mod cookies_data;
 pub mod dependency;
 pub mod errors;
 pub mod events;
+pub mod frontend_log;
 pub mod login_session;
 
 // 重导出常用类型,简化外部引用

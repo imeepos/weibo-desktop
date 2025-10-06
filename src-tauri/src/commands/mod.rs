@@ -7,4 +7,5 @@
 
 pub mod cookies_commands;
 pub mod dependency_commands;
+pub mod log_commands;
 pub mod qrcode_commands;

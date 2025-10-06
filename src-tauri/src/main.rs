@@ -49,6 +49,8 @@ fn main() {
             commands::dependency_commands::install_dependency,
             commands::dependency_commands::query_dependency_status,
             commands::dependency_commands::trigger_manual_check,
+            commands::log_commands::log_frontend_event,
+            commands::log_commands::log_frontend_batch,
         ])
         .setup(move |_app| {
             // 浏览器后端选择
