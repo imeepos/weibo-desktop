@@ -65,6 +65,7 @@ export const LoginPage = () => {
   const qrDataRef = useRef<GenerateQrcodeResponse | null>(null);
   const [qrData, setQrData] = useState<GenerateQrcodeResponse | null>(null);
   const [currentEvent, setCurrentEvent] = useState<LoginEvent | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playwrightStatus, setPlaywrightStatus] = useState<PlaywrightStatus | null>(null);
   const [isStartingServer, setIsStartingServer] = useState(false);
@@ -106,6 +107,8 @@ export const LoginPage = () => {
       if (errorMsg.includes('Playwright服务器未运行')) {
         await checkPlaywrightServer();
       }
+    } finally {
+      setIsGenerating(false);
     }
   }, [checkPlaywrightServer]);
 
