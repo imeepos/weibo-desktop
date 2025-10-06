@@ -323,9 +323,10 @@ export const LoginPage = () => {
           {currentEvent?.event_type === LoginEventType.QrCodeExpired && (
             <button
               onClick={generateQrcode}
-              className={`w-full ${BUTTON.WARNING}`}
+              disabled={isGenerating}
+              className={`w-full ${BUTTON.WARNING} ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              刷新二维码
+              {isGenerating ? '正在生成...' : '刷新二维码'}
             </button>
           )}
         </div>
