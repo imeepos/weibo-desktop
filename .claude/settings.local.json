@@ -6,7 +6,9 @@
       "Read(//tmp/**)",
       "Bash(npm run dev:*)",
       "WebSearch",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(docker compose:*)",
+      "Bash(lsof:*)"
     ],
     "deny": [],
     "ask": []

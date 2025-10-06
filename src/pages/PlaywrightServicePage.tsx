@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+import { XCircle, CheckCircle, AlertCircle } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';
 import { THEME, BUTTON } from '../constants/ui';
 
@@ -107,7 +108,7 @@ export const PlaywrightServicePage = () => {
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
-              <span className="text-xl">❌</span>
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold text-red-900 mb-1">操作失败</p>
                 <p className="text-red-700 text-sm">{error}</p>
@@ -154,9 +155,17 @@ export const PlaywrightServicePage = () => {
               <div className="bg-gray-50 rounded-lg p-4 col-span-2">
                 <p className="text-sm text-gray-600 mb-1">健康状态</p>
                 <div className="flex items-center gap-2">
-                  <span className={`text-lg font-semibold ${status?.healthy ? 'text-green-700' : 'text-yellow-700'}`}>
-                    {status?.healthy ? '✓ 健康' : '⚠ 未就绪'}
-                  </span>
+                  {status?.healthy ? (
+                    <>
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="text-lg font-semibold text-green-700">健康</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-5 h-5 text-yellow-600" />
+                      <span className="text-lg font-semibold text-yellow-700">未就绪</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

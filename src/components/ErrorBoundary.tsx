@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { logger } from '../utils/logger';
 
 interface Props {
@@ -34,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
           <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
-            <div className="text-6xl mb-4">⚠️</div>
+            <AlertTriangle className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
             <h1 className="text-2xl font-bold text-gray-900 mb-2">出错了</h1>
             <p className="text-gray-600 mb-4">
               应用遇到了意外错误

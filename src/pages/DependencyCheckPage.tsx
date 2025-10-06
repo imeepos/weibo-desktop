@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/tauri';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { CheckCircle, XCircle, AlertTriangle, Settings } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';
 import {
   DependencyCheckResult,
@@ -158,8 +159,9 @@ export const DependencyCheckPage = () => {
 
     return (
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          ⚠️ 缺少依赖: {dependency.dependency_id}
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-yellow-600" />
+          缺少依赖: {dependency.dependency_id}
         </h3>
 
         <div className="prose prose-sm max-w-none">
@@ -192,7 +194,7 @@ export const DependencyCheckPage = () => {
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-start gap-3">
-                <span className="text-xl">❌</span>
+                <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="font-semibold text-red-900 mb-1">检测失败</p>
                   <p className="text-red-700 text-sm">{error}</p>
@@ -210,7 +212,7 @@ export const DependencyCheckPage = () => {
           {checkResults.length === 0 && !isChecking && (
             <div className="bg-white rounded-lg shadow p-8 mb-6 text-center">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">⚙️</span>
+                <Settings className="w-8 h-8 text-blue-600" />
               </div>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">准备检测依赖环境</h2>
               <p className="text-gray-600 mb-6">
@@ -228,9 +230,11 @@ export const DependencyCheckPage = () => {
           {checkResults.length > 0 && (
             <div className="bg-white rounded-lg shadow p-4 mb-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">
-                  {getMissingDeps().length === 0 ? '✅' : '⚠️'}
-                </span>
+                {getMissingDeps().length === 0 ? (
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                ) : (
+                  <AlertTriangle className="w-8 h-8 text-yellow-600" />
+                )}
                 <div>
                   <p className="font-semibold text-gray-900">
                     {getMissingDeps().length === 0 ? '所有依赖已满足' : `${getMissingDeps().length} 个依赖缺失`}
@@ -254,8 +258,9 @@ export const DependencyCheckPage = () => {
             <>
               {getSatisfiedDeps().length > 0 && (
                 <div className="bg-white rounded-lg shadow p-6 mb-6">
-                  <h2 className="text-xl font-semibold text-green-700 mb-4">
-                    ✅ 已满足的依赖 ({getSatisfiedDeps().length})
+                  <h2 className="text-xl font-semibold text-green-700 mb-4 flex items-center gap-2">
+                    <CheckCircle className="w-6 h-6" />
+                    已满足的依赖 ({getSatisfiedDeps().length})
                   </h2>
                   <ul className="space-y-2">
                     {getSatisfiedDeps().map((dep) => (
@@ -275,8 +280,9 @@ export const DependencyCheckPage = () => {
 
               {getMissingDeps().length > 0 && (
                 <div>
-                  <h2 className="text-xl font-semibold text-red-700 mb-4">
-                    ❌ 缺失的依赖 ({getMissingDeps().length})
+                  <h2 className="text-xl font-semibold text-red-700 mb-4 flex items-center gap-2">
+                    <XCircle className="w-6 h-6" />
+                    缺失的依赖 ({getMissingDeps().length})
                   </h2>
                   {getMissingDeps().map((dep) => (
                     <div key={dep.dependency_id}>

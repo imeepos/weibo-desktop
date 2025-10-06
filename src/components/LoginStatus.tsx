@@ -1,3 +1,4 @@
+import { CheckCircle, Eye, PartyPopper, Clock, XCircle, Info, LucideIcon } from 'lucide-react';
 import { LoginEvent, LoginEventType } from '../types/weibo';
 
 interface LoginStatusProps {
@@ -19,22 +20,22 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
     return null;
   }
 
-  const getEventIcon = (): string => {
+  const getEventIcon = (): LucideIcon => {
     switch (event.event_type) {
       case LoginEventType.QrCodeGenerated:
-        return '✓';
+        return CheckCircle;
       case LoginEventType.QrCodeScanned:
-        return '👀';
+        return Eye;
       case LoginEventType.Confirmed:
-        return '✓';
+        return CheckCircle;
       case LoginEventType.ValidationSuccess:
-        return '🎉';
+        return PartyPopper;
       case LoginEventType.QrCodeExpired:
-        return '⏰';
+        return Clock;
       case LoginEventType.Error:
-        return '❌';
+        return XCircle;
       default:
-        return 'ℹ️';
+        return Info;
     }
   };
 
@@ -72,9 +73,11 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
     }
   };
 
+  const Icon = getEventIcon();
+
   return (
     <div className={`flex items-start gap-3 p-4 rounded-lg border ${getEventColor()}`}>
-      <span className="text-2xl">{getEventIcon()}</span>
+      <Icon className="w-6 h-6 flex-shrink-0" />
       <div className="flex-1">
         <p className="font-medium">{getEventMessage()}</p>
         {event.uid && (

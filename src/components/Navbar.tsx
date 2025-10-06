@@ -1,14 +1,15 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Lock, Cookie, Settings, Bot, LucideIcon } from 'lucide-react';
 
 export const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const navItems = [
-    { path: '/login', label: '扫码登录', icon: '🔐' },
-    { path: '/cookies', label: 'Cookies管理', icon: '🍪' },
-    { path: '/dependency', label: '依赖检测', icon: '⚙️' },
-    { path: '/playwright', label: 'Playwright服务', icon: '🤖' },
+  const navItems: Array<{ path: string; label: string; icon: LucideIcon }> = [
+    { path: '/login', label: '扫码登录', icon: Lock },
+    { path: '/cookies', label: 'Cookies管理', icon: Cookie },
+    { path: '/dependency', label: '依赖检测', icon: Settings },
+    { path: '/playwright', label: 'Playwright服务', icon: Bot },
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -22,22 +23,25 @@ export const Navbar = () => {
           </div>
 
           <div className="flex space-x-1">
-            {navItems.map((item) => (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`
-                  px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors
-                  ${isActive(item.path)
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }
-                `}
-              >
-                <span className="mr-1 sm:mr-2">{item.icon}</span>
-                <span className="hidden sm:inline">{item.label}</span>
-              </button>
-            ))}
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`
+                    flex items-center px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors
+                    ${isActive(item.path)
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }
+                  `}
+                >
+                  <Icon className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">{item.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

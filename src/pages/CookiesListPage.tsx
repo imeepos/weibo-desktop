@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/tauri';
+import { RefreshCw, XCircle, Cookie, Clipboard, Download } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';
 import { CookiesData } from '../types/weibo';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -101,7 +102,7 @@ export const CookiesListPage = () => {
             disabled={isLoading}
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
-            <span className={isLoading ? 'animate-spin' : ''}>🔄</span>
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">刷新</span>
           </button>
         </div>
@@ -109,7 +110,7 @@ export const CookiesListPage = () => {
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
-              <span className="text-xl">❌</span>
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold text-red-900 mb-1">操作失败</p>
                 <p className="text-red-700 text-sm">{error}</p>
@@ -132,7 +133,7 @@ export const CookiesListPage = () => {
               <ListSkeleton count={3} />
             ) : uids.length === 0 ? (
               <EmptyState
-                icon="🍪"
+                icon={Cookie}
                 title="暂无Cookies"
                 description="扫码登录后，Cookies将自动保存到这里"
                 action={{
@@ -175,15 +176,17 @@ export const CookiesListPage = () => {
                   <div className="flex gap-2">
                     <button
                       onClick={() => copyCookies(JSON.stringify(selectedCookies.cookies))}
-                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
                     >
-                      📋 复制
+                      <Clipboard className="w-4 h-4" />
+                      复制
                     </button>
                     <button
                       onClick={() => exportCookies(selectedCookies)}
-                      className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                      className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
                     >
-                      💾 导出
+                      <Download className="w-4 h-4" />
+                      导出
                     </button>
                   </div>
                 </div>
@@ -235,7 +238,7 @@ export const CookiesListPage = () => {
               </div>
             ) : (
               <div className="text-center py-12">
-                <span className="text-4xl mb-4 block">📋</span>
+                <Clipboard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">选择一个账户查看详情</p>
               </div>
             )}
