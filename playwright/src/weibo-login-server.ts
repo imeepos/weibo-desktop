@@ -11,12 +11,19 @@
  * Server -> Client: { type: 'qrcode_generated' | 'status_update' | 'error' }
  */
 
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, BrowserContext } from 'playwright';
 import { WebSocketServer, WebSocket } from 'ws';
 
 const PORT = 9223;
+const QR_TIMEOUT_MS = 180000; // 180秒超时
 
 let globalBrowser: Browser | null = null;
+
+// 会话管理: 跟踪活跃的 context 和超时定时器
+const activeSessions = new Map<string, {
+  context: BrowserContext;
+  timeout: NodeJS.Timeout;
+}>();
 
 async function ensureBrowser(): Promise<Browser> {
   if (globalBrowser && globalBrowser.isConnected()) {
@@ -39,6 +46,21 @@ function generateSessionId(): string {
   return `qr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+// 清理会话资源
+async function cleanupSession(sessionId: string) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  clearTimeout(session.timeout);
+  try {
+    await session.context.close();
+  } catch (error) {
+    console.error(`清理会话失败 ${sessionId}:`, error);
+  }
+  activeSessions.delete(sessionId);
+  console.log(`会话已清理: ${sessionId}`);
+}
+
 async function generateQrcode(ws: WebSocket): Promise<void> {
   const browser = await ensureBrowser();
 
@@ -50,9 +72,32 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
 
   const sessionId = generateSessionId();
   let lastRetcode: number | null = null;
+  let sessionClosed = false;
+
+  // 设置超时自动清理
+  const timeoutHandle = setTimeout(async () => {
+    if (!sessionClosed) {
+      console.log(`会话超时: ${sessionId}`);
+      sessionClosed = true;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'status_update',
+          session_id: sessionId,
+          retcode: 50114004, // 过期状态码
+          msg: 'QR code expired',
+          data: null,
+          timestamp: Date.now()
+        }));
+      }
+      await cleanupSession(sessionId);
+    }
+  }, QR_TIMEOUT_MS);
+
+  // 注册会话
+  activeSessions.set(sessionId, { context, timeout: timeoutHandle });
 
   page.on('response', async (response) => {
-    if (!response.url().includes('/sso/v2/qrcode/check')) return;
+    if (!response.url().includes('/sso/v2/qrcode/check') || sessionClosed) return;
 
     try {
       if (response.status() !== 200) return;
@@ -70,8 +115,16 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
           timestamp: Date.now()
         }));
         lastRetcode = currentRetcode;
+
+        // 如果是终止状态,清理会话
+        if ([50114003, 50114004, 50114005, 50114006, 50114007].includes(currentRetcode)) {
+          sessionClosed = true;
+          await cleanupSession(sessionId);
+        }
       }
     } catch (error: any) {
+      if (sessionClosed) return;
+
       // 登录成功时页面会跳转,导致无法获取响应体 (资源已销毁)
       // 这是正常现象,需提取 cookies 并发送 login_confirmed 事件
       const errorMessage = error?.message || '';
@@ -99,6 +152,10 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
               timestamp: Date.now()
             }));
           }
+
+          // 登录成功,清理会话
+          sessionClosed = true;
+          await cleanupSession(sessionId);
         } catch (cookieError: any) {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
@@ -108,6 +165,8 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
               timestamp: Date.now()
             }));
           }
+          sessionClosed = true;
+          await cleanupSession(sessionId);
         }
       } else if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
@@ -143,7 +202,11 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
     } catch {}
   }
 
-  if (!qrImageSrc) throw new Error('QR code not found');
+  if (!qrImageSrc) {
+    sessionClosed = true;
+    await cleanupSession(sessionId);
+    throw new Error('QR code not found');
+  }
 
   let qrImageBase64: string;
   if (qrImageSrc.startsWith('data:image')) {
@@ -154,7 +217,7 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
   }
 
   const now = Date.now();
-  const expiresAt = now + 180000;
+  const expiresAt = now + QR_TIMEOUT_MS;
 
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
@@ -167,13 +230,15 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
     }));
   }
 
-  await context.close();
+  // ✅ 不再立即关闭 context,保持监听直到登录完成或超时
 }
 
 
 const wss = new WebSocketServer({ port: PORT });
 
 wss.on('connection', (ws) => {
+  let currentSessionId: string | null = null;
+
   ws.on('message', async (data) => {
     try {
       const message = JSON.parse(data.toString());
@@ -201,12 +266,30 @@ wss.on('connection', (ws) => {
       }));
     }
   });
+
+  // WebSocket关闭时清理所有相关会话
+  ws.on('close', async () => {
+    console.log('WebSocket连接关闭,清理所有会话');
+    // 清理所有活跃会话 (通常一个连接只有一个会话,但安全起见清理所有)
+    for (const [sessionId] of activeSessions) {
+      await cleanupSession(sessionId);
+    }
+  });
 });
 
 process.on('SIGINT', async () => {
+  console.log('收到SIGINT信号,清理所有资源');
+
+  // 清理所有会话
+  for (const [sessionId] of activeSessions) {
+    await cleanupSession(sessionId);
+  }
+
   if (globalBrowser) {
     await globalBrowser.close();
   }
   wss.close();
   process.exit(0);
 });
+
+console.log(`微博登录服务已启动 - WebSocket端口: ${PORT}`);

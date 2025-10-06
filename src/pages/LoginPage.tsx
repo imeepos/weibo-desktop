@@ -63,6 +63,8 @@ const createEventFromStatus = (event: LoginStatusEvent): LoginEvent | null => {
 export const LoginPage = () => {
   const navigate = useNavigate();
   const qrDataRef = useRef<GenerateQrcodeResponse | null>(null);
+  const isInitialMount = useRef(true);
+  const isGeneratingRef = useRef(false);
   const [qrData, setQrData] = useState<GenerateQrcodeResponse | null>(null);
   const [currentEvent, setCurrentEvent] = useState<LoginEvent | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -86,6 +88,9 @@ export const LoginPage = () => {
   }, []);
 
   const generateQrcode = useCallback(async () => {
+    if (isGeneratingRef.current) return; // 防止重复调用
+
+    isGeneratingRef.current = true;
     setIsGenerating(true);
     setError(null);
     setCurrentEvent(null);
@@ -109,6 +114,7 @@ export const LoginPage = () => {
       }
     } finally {
       setIsGenerating(false);
+      isGeneratingRef.current = false;
     }
   }, [checkPlaywrightServer]);
 
@@ -150,8 +156,11 @@ export const LoginPage = () => {
   }, []);
 
   useEffect(() => {
-    void generateQrcode();
-  }, [generateQrcode]);
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      void generateQrcode();
+    }
+  }, []); // 空依赖数组,仅在挂载时执行一次
 
   useKeyboardShortcut([
     { key: 'r', ctrl: true, callback: () => void generateQrcode() },
