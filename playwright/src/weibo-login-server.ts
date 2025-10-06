@@ -261,11 +261,14 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
 const wss = new WebSocketServer({ port: PORT });
 
 wss.on('connection', (ws) => {
+  console.log('🔗 新的WebSocket连接建立');
   let currentSessionId: string | null = null;
 
   ws.on('message', async (data) => {
+    console.log('📨 收到WebSocket消息:', data.toString());
     try {
       const message = JSON.parse(data.toString());
+      console.log('📋 解析后的消息类型:', message.type);
 
       if (message.type === 'generate_qrcode') {
         try {
@@ -293,7 +296,7 @@ wss.on('connection', (ws) => {
 
   // WebSocket关闭时清理所有相关会话
   ws.on('close', async () => {
-    console.log('WebSocket连接关闭,清理所有会话');
+    console.log('❌ WebSocket连接关闭,清理所有会话');
     // 清理所有活跃会话 (通常一个连接只有一个会话,但安全起见清理所有)
     for (const [sessionId] of activeSessions) {
       await cleanupSession(sessionId);
