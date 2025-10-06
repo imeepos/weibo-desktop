@@ -132,13 +132,18 @@ async fn monitor_login(
 
     tokio::pin!(stream);
 
+    tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已就绪,开始等待消息");
+
     while let Some(result) = stream.next().await {
+        tracing::debug!(二维码ID = %qr_id, "收到WebSocket消息: {:?}", result);
+
         match result {
             Ok((status, uid_opt, cookies_opt, screen_name_opt, retcode, msg, data)) => {
                 tracing::info!(二维码ID = %qr_id, 状态 = ?status, retcode = ?retcode, msg = ?msg, "状态更新");
 
                 match status {
                     QrCodeStatus::Confirmed => {
+                        tracing::debug!(二维码ID = %qr_id, "处理Confirmed状态");
                         if let (Some(uid), Some(cookies), Some(screen_name)) = (uid_opt, cookies_opt, screen_name_opt) {
                             // 验证cookies
                             match validator.validate_cookies(&cookies).await {
@@ -163,6 +168,7 @@ async fn monitor_login(
                                     // 推送confirmed事件
                                     let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
                                     let _ = app.emit_all("login_status_update", event);
+                                    tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
                                 }
                                 Err(e) => {
                                     tracing::error!(二维码ID = %qr_id, 错误 = ?e, "Cookies验证失败");
@@ -173,27 +179,35 @@ async fn monitor_login(
                         break;
                     }
                     QrCodeStatus::Scanned => {
+                        tracing::debug!(二维码ID = %qr_id, "处理Scanned状态");
                         let event = LoginStatusEvent::with_raw_data(qr_id.clone(), QrCodeStatus::Scanned, None, retcode, msg, data);
                         let _ = app.emit_all("login_status_update", event);
+                        tracing::debug!(二维码ID = %qr_id, "Scanned事件已发送至前端");
                     }
                     QrCodeStatus::Rejected | QrCodeStatus::Expired => {
+                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理终止状态");
                         let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
                         let _ = app.emit_all("login_status_update", event);
+                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "终止状态事件已发送至前端");
                         break;
                     }
                     _ => {
+                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理其他状态");
                         let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
                         let _ = app.emit_all("login_status_update", event);
+                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "状态事件已发送至前端");
                     }
                 }
             }
             Err(e) => {
-                tracing::error!(二维码ID = %qr_id, 错误 = ?e, "WebSocket错误");
+                tracing::error!(二维码ID = %qr_id, 错误 = ?e, 流状态 = "active", "WebSocket错误");
                 emit_error(&app, &qr_id, "WebSocketError", format!("{:?}", e));
                 break;
             }
         }
     }
+
+    tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已关闭,退出监控循环");
 
     drop(cleanup_guard); // 显式清理
     tracing::info!(二维码ID = %qr_id, "登录监控已停止");
