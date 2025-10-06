@@ -1,0 +1,134 @@
+{
+  "rabbit_version": "3.12.0",
+  "rabbitmq_version": "3.12.0",
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/weibo_desktop"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "desktop_user",
+      "vhost": "/weibo_desktop",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "parameters": [],
+  "global_parameters": [
+    {
+      "name": "cluster_name",
+      "value": "weibo_desktop_cluster"
+    }
+  ],
+  "policies": [
+    {
+      "vhost": "/weibo_desktop",
+      "name": "ha-all",
+      "pattern": ".*",
+      "apply-to": "all",
+      "definition": {
+        "ha-mode": "all"
+      },
+      "priority": 0
+    }
+  ],
+  "queues": [
+    {
+      "name": "login_events",
+      "vhost": "/weibo_desktop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 3600000,
+        "x-max-length": 10000
+      }
+    },
+    {
+      "name": "qrcode_events",
+      "vhost": "/weibo_desktop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1800000,
+        "x-max-length": 5000
+      }
+    },
+    {
+      "name": "cookies_validation",
+      "vhost": "/weibo_desktop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 7200000,
+        "x-max-length": 10000
+      }
+    },
+    {
+      "name": "system_notifications",
+      "vhost": "/weibo_desktop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000,
+        "x-max-length": 1000
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "weibo.events",
+      "vhost": "/weibo_desktop",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "weibo.direct",
+      "vhost": "/weibo_desktop",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "weibo.events",
+      "vhost": "/weibo_desktop",
+      "destination": "login_events",
+      "destination_type": "queue",
+      "routing_key": "login.*",
+      "arguments": {}
+    },
+    {
+      "source": "weibo.events",
+      "vhost": "/weibo_desktop",
+      "destination": "qrcode_events",
+      "destination_type": "queue",
+      "routing_key": "qrcode.*",
+      "arguments": {}
+    },
+    {
+      "source": "weibo.events",
+      "vhost": "/weibo_desktop",
+      "destination": "cookies_validation",
+      "destination_type": "queue",
+      "routing_key": "cookies.*",
+      "arguments": {}
+    },
+    {
+      "source": "weibo.direct",
+      "vhost": "/weibo_desktop",
+      "destination": "system_notifications",
+      "destination_type": "queue",
+      "routing_key": "notification",
+      "arguments": {}
+    }
+  ]
+}

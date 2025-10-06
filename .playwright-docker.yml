@@ -1,6 +1,13 @@
 # Docker Compose 配置示例 - Playwright E2E 测试环境
 #
-# 使用方法:
+# ⚠️ 已废弃: 此文件已整合到主 docker-compose.yml
+#
+# 请使用以下命令替代:
+#   运行E2E测试: docker compose --profile test up playwright-tests
+#   开发环境: docker compose --profile dev up tauri-dev
+#   基础服务: docker compose up redis postgres mongodb rabbitmq -d
+#
+# 使用方法 (旧):
 # docker compose -f .playwright-docker.yml up --build
 
 version: '3.8'
