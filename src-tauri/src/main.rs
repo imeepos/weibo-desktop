@@ -21,10 +21,13 @@ fn main() {
     let playwright_server_url = std::env::var("PLAYWRIGHT_SERVER_URL")
         .unwrap_or_else(|_| "ws://localhost:9223".to_string());
     let playwright_validation_script = std::env::var("PLAYWRIGHT_VALIDATION_SCRIPT")
-        .unwrap_or_else(|_| "../playwright/dist/validate-cookies.js".to_string());
+        .unwrap_or_else(|_| {
+            "/home/ubuntu/worktrees/desktop/playwright/dist/validate-cookies.js".to_string()
+        });
 
     tracing::info!(
         playwright_server = %playwright_server_url,
+        validation_script = %playwright_validation_script,
         "Playwright server 由外部脚本管理 (scripts/start-playwright-server.sh)"
     );
 
