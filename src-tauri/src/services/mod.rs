@@ -77,6 +77,7 @@ pub mod websocket_server_poc;
 pub mod dependency_checker;
 pub mod installer_service;
 pub mod redis_service;
+pub mod session_manager;
 pub mod validation_service;
 pub mod weibo_api;
 
@@ -91,5 +92,6 @@ pub use websocket_server_poc::WebSocketServer as WebSocketServerPoc;
 pub use dependency_checker::DependencyChecker;
 pub use installer_service::InstallerService;
 pub use redis_service::RedisService;
+pub use session_manager::SessionManager;
 pub use validation_service::ValidationService;
 pub use weibo_api::WeiboApiClient;

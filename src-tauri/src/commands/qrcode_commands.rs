@@ -65,11 +65,20 @@ pub async fn generate_qrcode(
     // 克隆services用于后台任务 (Arc已在内部,无需重复包装)
     let redis = state.redis.clone();
     let validator = state.validator.clone();
+    let session_manager = state.session_manager.clone();
 
-    // 启动后台监控任务
-    tokio::spawn(async move {
-        monitor_login(qr_id.clone(), ws_stream, app, redis, validator).await;
+    // 克隆qr_id用于后续操作
+    let qr_id_for_task = qr_id.clone();
+    let qr_id_for_manager = qr_id.clone();
+
+    // 启动后台监控任务 (可取消)
+    let monitor_task = tokio::spawn(async move {
+        monitor_login(qr_id_for_task, ws_stream, app, redis, validator).await;
     });
+
+    // 注册到会话管理器 (自动取消旧任务)
+    let abort_handle = monitor_task.abort_handle();
+    session_manager.set_current_session(qr_id_for_manager, abort_handle).await;
 
     Ok(QrCodeResponse {
         qr_id: session.qr_id,
@@ -82,6 +91,7 @@ pub async fn generate_qrcode(
 /// 监控登录状态 (后台任务)
 ///
 /// 监听WebSocket消息流,处理状态变化并推送Event到前端
+/// 支持任务取消 - 当SessionManager取消旧会话时,此任务会自动终止
 async fn monitor_login(
     qr_id: String,
     ws_stream: crate::services::weibo_api::WsStream,
@@ -93,6 +103,9 @@ async fn monitor_login(
     use tokio_tungstenite::tungstenite::Message;
 
     tracing::info!(二维码ID = %qr_id, "登录监控已启动");
+
+    // 监控任务被取消时的清理逻辑
+    let cleanup_guard = CleanupGuard::new(qr_id.clone());
 
     let stream = ws_stream.filter_map(|msg_result| async move {
         match msg_result {
@@ -182,7 +195,25 @@ async fn monitor_login(
         }
     }
 
+    drop(cleanup_guard); // 显式清理
     tracing::info!(二维码ID = %qr_id, "登录监控已停止");
+}
+
+/// 清理守卫: 任务结束或被取消时自动记录日志
+struct CleanupGuard {
+    qr_id: String,
+}
+
+impl CleanupGuard {
+    fn new(qr_id: String) -> Self {
+        Self { qr_id }
+    }
+}
+
+impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+        tracing::debug!(二维码ID = %self.qr_id, "监控任务清理完成 (WebSocket连接已关闭)");
+    }
 }
 
 fn emit_error(app: &AppHandle, qr_id: &str, error_type: &str, message: String) {
