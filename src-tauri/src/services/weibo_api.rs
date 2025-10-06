@@ -1,264 +1,196 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use tokio::process::Command;
+use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
+use tokio::net::TcpStream;
+use futures_util::{StreamExt, SinkExt};
 
-use crate::models::{ApiError, LoginSession, QrCodeStatus};
+use crate::models::{ApiError, LoginSession};
 
-/// 微博登录服务 (Playwright实现)
+/// WebSocket Stream 类型别名
+pub type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+/// 微博登录服务 (WebSocket模式)
 ///
 /// 存在即合理:
-/// - 移除对微博OAuth2 API和App Key的依赖
-/// - 使用Playwright自动化真实的登录流程
-/// - 每个方法都有不可替代的职责
+/// - 通过WebSocket与长驻的Playwright server通信
+/// - 实时推送状态变化,替代低效轮询
+/// - 单一职责:连接管理
 ///
 /// 职责:
-/// - 调用Playwright脚本生成二维码
-/// - 轮询检测登录状态
-/// - 提取cookies和用户信息
+/// - 建立WebSocket连接
+/// - 生成二维码并返回连接流
 pub struct WeiboApiClient {
-    playwright_login_script: String,
+    #[allow(dead_code)]
+    server_url: String,
 }
 
-/// Playwright生成二维码响应
+/// WebSocket事件
 #[derive(Debug, Deserialize)]
-struct PlaywrightGenerateResponse {
-    session_id: String,
-    qr_image: String,
-    expires_in: i64,
-}
-
-/// Playwright状态检查响应
-#[derive(Debug, Deserialize)]
-struct PlaywrightStatusResponse {
-    status: String,
-    cookies: Option<HashMap<String, String>>,
-    uid: Option<String>,
-    screen_name: Option<String>,
-}
-
-/// Playwright错误响应
-#[derive(Debug, Deserialize)]
-struct PlaywrightErrorResponse {
-    error: String,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WsEvent {
+    QrcodeGenerated {
+        session_id: String,
+        qr_image: String,
+        expires_in: i64,
+        expires_at: i64,
+        timestamp: i64,
+    },
+    StatusUpdate {
+        session_id: String,
+        retcode: i32,
+        msg: String,
+        data: Option<serde_json::Value>,
+        timestamp: i64,
+    },
+    LoginConfirmed {
+        session_id: String,
+        status: String,
+        cookies: HashMap<String, String>,
+        uid: String,
+        screen_name: String,
+        timestamp: i64,
+    },
+    Error {
+        error_type: String,
+        message: String,
+        timestamp: i64,
+    },
 }
 
 impl WeiboApiClient {
     /// 创建新的客户端
     ///
     /// # 参数
-    /// - `playwright_login_script`: Playwright登录脚本路径
-    pub fn new(playwright_login_script: String) -> Self {
+    /// - `server_url`: Playwright WebSocket server地址 (如 "ws://localhost:9223")
+    pub fn new(server_url: String) -> Self {
         tracing::info!(
-            playwright_script = %playwright_login_script,
-            "Weibo API client initialized (Playwright mode)"
+            服务器地址 = %server_url,
+            "微博API客户端已初始化 (WebSocket模式)"
         );
 
-        Self {
-            playwright_login_script,
-        }
+        Self { server_url }
     }
 
     /// 生成二维码
     ///
-    /// 调用Playwright脚本访问真实的微博登录页面,提取二维码图片。
+    /// 通过WebSocket调用Playwright server生成二维码
     ///
     /// # 返回值
     /// - `LoginSession`: 登录会话
     /// - `String`: base64编码的二维码图片
+    /// - `WsStream`: WebSocket连接流 (供后续监控使用)
     ///
     /// # 错误
-    /// - `ApiError::NetworkFailed`: Playwright执行失败
+    /// - `ApiError::NetworkFailed`: WebSocket连接失败
     /// - `ApiError::QrCodeGenerationFailed`: 二维码生成失败
     /// - `ApiError::JsonParseFailed`: 响应解析失败
-    pub async fn generate_qrcode(&self) -> Result<(LoginSession, String), ApiError> {
-        tracing::debug!(
-            script = %self.playwright_login_script,
-            "Calling Playwright to generate QR code"
-        );
+    pub async fn generate_qrcode(&self) -> Result<(LoginSession, String, WsStream), ApiError> {
+        tracing::info!("通过WebSocket生成二维码");
 
-        let output = Command::new("node")
-            .arg(&self.playwright_login_script)
-            .arg("generate")
-            .output()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Failed to execute Playwright script");
-                ApiError::NetworkFailed(format!("Playwright execution failed: {}", e))
-            })?;
+        let ws_url = "ws://localhost:9223";
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
+        // 连接WebSocket (带重试)
+        let (mut ws_stream, _) = Self::connect_with_retry(ws_url, 3).await?;
 
-            // 尝试解析错误信息
-            if let Ok(err_response) = serde_json::from_str::<PlaywrightErrorResponse>(&stdout) {
-                tracing::error!(error = %err_response.error, "Playwright returned error");
-                return Err(ApiError::QrCodeGenerationFailed(err_response.error));
+        tracing::debug!("WebSocket连接成功,发送 generate_qrcode 消息");
+
+        // 发送生成二维码请求
+        let request = serde_json::json!({
+            "type": "generate_qrcode"
+        });
+
+        ws_stream.send(Message::Text(request.to_string())).await.map_err(|e| {
+            tracing::error!(错误 = %e, "发送WebSocket消息失败");
+            ApiError::NetworkFailed(format!("Failed to send message: {}", e))
+        })?;
+
+        // 等待响应 (循环直到收到qrcode_generated或error)
+        while let Some(msg_result) = ws_stream.next().await {
+            match msg_result {
+                Ok(Message::Text(text)) => {
+                    tracing::debug!(消息内容 = %text, "收到WebSocket响应");
+
+                    match serde_json::from_str::<WsEvent>(&text) {
+                        Ok(WsEvent::QrcodeGenerated { session_id, qr_image, expires_in, expires_at, .. }) => {
+                            let session = LoginSession::from_timestamp(session_id, expires_at);
+
+                            tracing::info!(
+                                二维码ID = %session.qr_id,
+                                实际剩余秒数 = %expires_in,
+                                过期时间戳 = %expires_at,
+                                "二维码生成成功 (WebSocket),连接保持活跃"
+                            );
+
+                            return Ok((session, qr_image, ws_stream));
+                        }
+                        Ok(WsEvent::Error { error_type, message, .. }) => {
+                            tracing::error!(错误类型 = %error_type, 错误信息 = %message, "收到错误消息");
+                            return Err(ApiError::QrCodeGenerationFailed(format!("{}: {}", error_type, message)));
+                        }
+                        Ok(_other) => {
+                            tracing::debug!("跳过中间消息,继续等待qrcode_generated");
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::error!(错误 = %e, 原始消息 = %text, "消息解析失败");
+                            return Err(ApiError::JsonParseFailed(e.to_string()));
+                        }
+                    }
+                }
+                Ok(msg) => {
+                    tracing::error!(消息类型 = ?msg, "收到非文本消息");
+                    return Err(ApiError::QrCodeGenerationFailed("Received non-text message".to_string()));
+                }
+                Err(e) => {
+                    tracing::error!(错误 = %e, "WebSocket消息接收失败");
+                    return Err(ApiError::NetworkFailed(format!("WebSocket error: {}", e)));
+                }
             }
-
-            tracing::error!(
-                stderr = %stderr,
-                stdout = %stdout,
-                "Playwright script execution failed"
-            );
-            return Err(ApiError::QrCodeGenerationFailed(format!(
-                "Script failed: {}",
-                stderr
-            )));
         }
 
-        let response: PlaywrightGenerateResponse =
-            serde_json::from_slice(&output.stdout).map_err(|e| {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                tracing::error!(
-                    error = %e,
-                    stdout = %stdout,
-                    "Failed to parse Playwright response"
-                );
-                ApiError::JsonParseFailed(e.to_string())
-            })?;
-
-        let session = LoginSession::new(response.session_id, response.expires_in);
-
-        tracing::info!(
-            qr_id = %session.qr_id,
-            expires_in = %response.expires_in,
-            "QR code generated successfully (Playwright)"
-        );
-
-        Ok((session, response.qr_image))
+        tracing::error!("WebSocket连接意外关闭");
+        Err(ApiError::NetworkFailed("WebSocket connection closed unexpectedly".to_string()))
     }
 
-    /// 检查二维码状态
-    ///
-    /// 调用Playwright脚本检测登录状态,自动更新会话状态。
+    /// WebSocket连接重试
     ///
     /// # 参数
-    /// - `session`: 可变的登录会话
+    /// - `url`: WebSocket地址
+    /// - `max_retries`: 最大重试次数
     ///
     /// # 返回值
-    /// - `Some((uid, cookies))`: 登录成功
-    /// - `None`: 未完成登录
+    /// - `WsStream`: WebSocket连接流
     ///
     /// # 错误
-    /// - `ApiError::PollingFailed`: 轮询失败
-    /// - `ApiError::JsonParseFailed`: 响应解析失败
-    ///
-    /// # 状态转换
-    /// - pending: 无变化
-    /// - scanned: 调用 `session.mark_scanned()`
-    /// - confirmed: 调用 `session.mark_confirmed()`, 返回cookies
-    /// - expired: 调用 `session.mark_expired()`
-    pub async fn check_qrcode_status(
-        &self,
-        session: &mut LoginSession,
-    ) -> Result<Option<(String, HashMap<String, String>)>, ApiError> {
-        tracing::debug!(
-            qr_id = %session.qr_id,
-            current_status = ?session.status,
-            "Checking QR code status (Playwright)"
-        );
+    /// - `ApiError::NetworkFailed`: 重试耗尽后仍然失败
+    async fn connect_with_retry(url: &str, max_retries: u32) -> Result<(WsStream, tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>), ApiError> {
+        use tokio::time::{sleep, Duration};
 
-        let output = Command::new("node")
-            .arg(&self.playwright_login_script)
-            .arg("check")
-            .arg(&session.qr_id)
-            .output()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Failed to execute Playwright check");
-                ApiError::PollingFailed(format!("Playwright execution failed: {}", e))
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-
-            if let Ok(err_response) = serde_json::from_str::<PlaywrightErrorResponse>(&stdout) {
-                tracing::error!(error = %err_response.error, "Playwright check error");
-                return Err(ApiError::PollingFailed(err_response.error));
-            }
-
-            tracing::error!(
-                stderr = %stderr,
-                stdout = %stdout,
-                "Playwright check failed"
-            );
-            return Err(ApiError::PollingFailed(format!("Check failed: {}", stderr)));
-        }
-
-        let response: PlaywrightStatusResponse =
-            serde_json::from_slice(&output.stdout).map_err(|e| {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                tracing::error!(
-                    error = %e,
-                    stdout = %stdout,
-                    "Failed to parse status response"
-                );
-                ApiError::JsonParseFailed(e.to_string())
-            })?;
-
-        match response.status.as_str() {
-            "pending" => {
-                tracing::trace!(qr_id = %session.qr_id, "Status: pending");
-            }
-            "scanned" => {
-                if session.status == QrCodeStatus::Pending {
-                    session.mark_scanned();
-                    tracing::info!(qr_id = %session.qr_id, "QR code scanned (Playwright)");
+        for attempt in 0..max_retries {
+            match connect_async(url).await {
+                Ok(result) => {
+                    if attempt > 0 {
+                        tracing::info!(尝试次数 = attempt + 1, "WebSocket重连成功");
+                    }
+                    return Ok(result);
                 }
-            }
-            "confirmed" => {
-                session.mark_confirmed();
-                if let (Some(uid), Some(cookies)) = (response.uid, response.cookies) {
-                    tracing::info!(
-                        qr_id = %session.qr_id,
-                        uid = %uid,
-                        cookies_count = %cookies.len(),
-                        screen_name = ?response.screen_name,
-                        duration_seconds = %session.duration_seconds(),
-                        "Login confirmed (Playwright)"
+                Err(e) if attempt < max_retries - 1 => {
+                    tracing::warn!(
+                        尝试 = attempt + 1,
+                        最大重试 = max_retries,
+                        错误 = %e,
+                        "WebSocket连接失败,重试中"
                     );
-                    return Ok(Some((uid, cookies)));
-                } else {
-                    tracing::error!(
-                        qr_id = %session.qr_id,
-                        "Confirmed status but missing uid or cookies"
-                    );
-                    return Err(ApiError::PollingFailed(
-                        "Missing uid or cookies in confirmed response".into(),
-                    ));
+                    sleep(Duration::from_secs(2)).await;
                 }
-            }
-            "expired" => {
-                session.mark_expired();
-                tracing::warn!(
-                    qr_id = %session.qr_id,
-                    duration_seconds = %session.duration_seconds(),
-                    "QR code expired (Playwright)"
-                );
-            }
-            unknown => {
-                tracing::warn!(
-                    qr_id = %session.qr_id,
-                    status = %unknown,
-                    "Unknown status from Playwright"
-                );
+                Err(e) => {
+                    tracing::error!(错误 = %e, URL = %url, 尝试次数 = max_retries, "WebSocket连接失败 (重试耗尽)");
+                    return Err(ApiError::NetworkFailed(format!("WebSocket connection failed after {} retries: {}", max_retries, e)));
+                }
             }
         }
 
-        Ok(None)
+        unreachable!()
     }
 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_client_creation() {
-        let client = WeiboApiClient::new("./test/script.js".to_string());
-        assert_eq!(client.playwright_login_script, "./test/script.js");
-    }
 }

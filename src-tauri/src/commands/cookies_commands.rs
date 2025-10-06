@@ -161,9 +161,9 @@ pub async fn save_cookies(
     state: State<'_, AppState>,
 ) -> Result<SaveCookiesResponse, SaveCookiesError> {
     tracing::info!(
-        uid = %uid,
-        cookies_count = %cookies.len(),
-        "save_cookies command called"
+        用户ID = %uid,
+        Cookies数量 = %cookies.len(),
+        "调用save_cookies命令"
     );
 
     let start = std::time::Instant::now();
@@ -193,11 +193,11 @@ pub async fn save_cookies(
     let validation_duration = start.elapsed();
 
     tracing::info!(
-        uid = %cookies_data.uid,
-        redis_key = %cookies_data.redis_key,
-        validation_duration_ms = %validation_duration.as_millis(),
-        is_overwrite = %is_overwrite,
-        "Cookies saved successfully"
+        用户ID = %cookies_data.uid,
+        Redis键 = %cookies_data.redis_key,
+        验证耗时毫秒 = %validation_duration.as_millis(),
+        是否覆盖 = %is_overwrite,
+        "Cookies保存成功"
     );
 
     Ok(SaveCookiesResponse {
@@ -222,7 +222,7 @@ pub async fn query_cookies(
     uid: String,
     state: State<'_, AppState>,
 ) -> Result<CookiesData, String> {
-    tracing::debug!(uid = %uid, "query_cookies command called");
+    tracing::debug!(用户ID = %uid, "调用query_cookies命令");
 
     state
         .redis
@@ -243,7 +243,7 @@ pub async fn delete_cookies(
     uid: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    tracing::info!(uid = %uid, "delete_cookies command called");
+    tracing::info!(用户ID = %uid, "调用delete_cookies命令");
 
     state
         .redis
@@ -263,7 +263,7 @@ pub async fn delete_cookies(
 pub async fn list_all_uids(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
-    tracing::debug!("list_all_uids command called");
+    tracing::debug!("调用list_all_uids命令");
 
     state
         .redis

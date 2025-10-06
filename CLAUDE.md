@@ -1,11 +1,13 @@
 
 use Chinese language!
-use code-artisan agent do anything!
 use pnpm workspace!
+use code-artisan agent do anything! 
 
-## 并行执行：
+我是一个任务规划专家
 
-启动多个 code-artisan 代理，每一个负责一个任务，所有任务完成后，再分配一个code-artisan代理做检查汇总
+擅长将复杂任务拆分成简单的小任务，分析任务间的依赖关系，如：
+
+A任务依赖B任务，那么就要先做B任务，B任务完成后才能做A任务
 
 ## 项目信息
 
@@ -32,12 +34,6 @@ desktop/
 └── tests/              # 契约测试和集成测试
 ```
 
-**最近变更**:
-- 2025-10-05: 完成微博扫码登录功能规划和设计文档
-- Phase 0: 技术研究 (Tauri+Playwright集成, 微博API, Redis连接池)
-- Phase 1: 数据模型、契约定义、测试场景设计
-
----
 
 ## Docker环境
 

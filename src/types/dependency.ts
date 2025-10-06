@@ -1,17 +1,8 @@
-/**
- * 依赖检测与安装类型定义
- *
- * 与Rust后端完全对应的类型系统
- * 每个类型都承载着明确的语义
- */
-
-/// 依赖重要性级别
 export enum DependencyLevel {
   Required = 'required',
   Optional = 'optional',
 }
 
-/// 依赖检测方法类型
 export interface CheckMethodExecutable {
   type: 'executable';
   name: string;
@@ -31,7 +22,6 @@ export interface CheckMethodFile {
 
 export type CheckMethod = CheckMethodExecutable | CheckMethodService | CheckMethodFile;
 
-/// 依赖项定义
 export interface Dependency {
   id: string;
   name: string;
@@ -45,7 +35,6 @@ export interface Dependency {
   install_command?: string;
 }
 
-/// 依赖检测状态
 export enum CheckStatus {
   Satisfied = 'satisfied',
   Missing = 'missing',
@@ -53,7 +42,6 @@ export enum CheckStatus {
   Corrupted = 'corrupted',
 }
 
-/// 依赖检测结果
 export interface DependencyCheckResult {
   dependency_id: string;
   checked_at: string;
@@ -63,7 +51,6 @@ export interface DependencyCheckResult {
   duration_ms: number;
 }
 
-/// 安装任务状态
 export enum InstallStatus {
   Pending = 'pending',
   Downloading = 'downloading',
@@ -72,7 +59,6 @@ export enum InstallStatus {
   Failed = 'failed',
 }
 
-/// 安装错误类型
 export enum InstallErrorType {
   NetworkError = 'network_error',
   PermissionError = 'permission_error',
@@ -81,7 +67,6 @@ export enum InstallErrorType {
   UnknownError = 'unknown_error',
 }
 
-/// 安装任务
 export interface InstallationTask {
   task_id: string;
   dependency_id: string;
@@ -95,7 +80,6 @@ export interface InstallationTask {
   error_type?: InstallErrorType;
 }
 
-/// 依赖检测进度事件
 export interface DependencyCheckProgressEvent {
   current_index: number;
   total_count: number;
@@ -103,7 +87,6 @@ export interface DependencyCheckProgressEvent {
   status: string;
 }
 
-/// 安装进度事件
 export interface InstallationProgressEvent {
   task_id: string;
   dependency_id: string;

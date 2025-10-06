@@ -155,44 +155,211 @@ pub fn init_logging() -> Result<tracing_appender::non_blocking::WorkerGuard, Box
 
 /// 日志宏辅助模块
 ///
-/// 提供结构化日志的便捷宏
+/// 提供优雅的中文结构化日志宏，遵循"日志是思想的表达"原则
 pub mod macros {
-    /// 记录业务事件
+    /// 记录二维码相关业务事件
     ///
     /// 使用示例:
     /// ```no_run
-    /// use weibo_login::log_event;
-    /// log_event!(
-    ///     "QrCodeScanned",
+    /// use weibo_login::log_qr_event;
+    /// log_qr_event!(
+    ///     "二维码生成",
     ///     qr_id = "qr_abc123",
-    ///     uid = "1234567890"
+    ///     有效期秒数 = 180
     /// );
     /// ```
     #[macro_export]
-    macro_rules! log_event {
-        ($event_type:expr, $($field:tt = $value:expr),* $(,)?) => {
+    macro_rules! log_qr_event {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
-                event_type = $event_type,
+                事件类型 = "二维码操作",
                 $($field = $value),*
+                $message
             );
         };
     }
 
-    /// 记录错误事件
+    /// 记录登录相关业务事件
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_login_event;
+    /// log_login_event!(
+    ///     "登录成功",
+    ///     用户ID = "1234567890",
+    ///     用户名 = "example_user"
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_login_event {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::info!(
+                事件类型 = "登录流程",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录存储相关业务事件
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_storage_event;
+    /// log_storage_event!(
+    ///     "数据保存成功",
+    ///     数据类型 = "Cookies",
+    ///     用户ID = "1234567890"
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_storage_event {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::info!(
+                事件类型 = "数据存储",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录网络请求相关事件
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_network_event;
+    /// log_network_event!(
+    ///     "API调用成功",
+    ///     端点 = "/generate_qrcode",
+    ///     耗时毫秒 = 1500
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_network_event {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::info!(
+                事件类型 = "网络请求",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录验证相关业务事件
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_validation_event;
+    /// log_validation_event!(
+    ///     "验证通过",
+    ///     验证类型 = "Cookies有效性",
+    ///     用户ID = "1234567890"
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_validation_event {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::info!(
+                事件类型 = "数据验证",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录系统级事件
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_system_event;
+    /// log_system_event!(
+    ///     "应用启动完成",
+    ///     组件 = "Redis连接池",
+    ///     状态 = "健康"
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_system_event {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::info!(
+                事件类型 = "系统事件",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录错误事件，包含错误上下文
     ///
     /// 使用示例:
     /// ```no_run
     /// use weibo_login::log_error;
     /// log_error!(
-    ///     "PollingFailed",
-    ///     qr_id = "qr_abc123",
-    ///     error = "connection timeout"
+    ///     "网络连接失败",
+    ///     二维码ID = "qr_abc123",
+    ///     错误详情 = "连接超时"
     /// );
     /// ```
     #[macro_export]
     macro_rules! log_error {
-        ($event_type:expr, $($field:tt = $value:expr),* $(,)?) => {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::error!(
+                错误类型 = "业务错误",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录警告事件
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_warn;
+    /// log_warn!(
+    ///     "二维码即将过期",
+    ///     二维码ID = "qr_abc123",
+    ///     剩余秒数 = 30
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_warn {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::warn!(
+                警告类型 = "业务警告",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    /// 记录调试信息
+    ///
+    /// 使用示例:
+    /// ```no_run
+    /// use weibo_login::log_debug;
+    /// log_debug!(
+    ///     "状态轮询中",
+    ///     二维码ID = "qr_abc123",
+    ///     轮询次数 = 5
+    /// );
+    /// ```
+    #[macro_export]
+    macro_rules! log_debug {
+        ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::debug!(
+                调试类型 = "状态跟踪",
+                $($field = $value),*
+                $message
+            );
+        };
+    }
+
+    // 保持向后兼容的旧宏
+    #[macro_export]
+    macro_rules! log_event {
+        ($event_type:expr, $($field:tt = $value:expr),* $(,)?) => {
+            tracing::info!(
                 event_type = $event_type,
                 $($field = $value),*
             );
@@ -211,17 +378,17 @@ mod tests {
         let result = init();
         assert!(result.is_ok());
 
-        // 写入测试日志
-        info!("日志系统测试: INFO级别");
-        warn!("日志系统测试: WARN级别");
-        error!("日志系统测试: ERROR级别");
+        // 写入测试日志 - 使用新的中文日志宏
+        crate::log_system_event!("日志系统初始化完成", 级别 = "INFO");
+        crate::log_warn!("这是一个警告测试", 测试场景 = "系统警告");
+        crate::log_error!("这是一个错误测试", 测试场景 = "系统错误");
 
-        // 结构化日志测试
-        info!(
-            qr_id = "test_qr_123",
-            event_type = "TestEvent",
-            "结构化日志测试"
-        );
+        // 使用新的领域特定日志宏
+        crate::log_qr_event!("测试二维码生成", 二维码ID = "test_qr_123", 有效期秒数 = 180);
+        crate::log_login_event!("测试登录事件", 用户ID = "123456789", 状态 = "成功");
+        crate::log_storage_event!("测试数据存储", 数据类型 = "Cookies", 存储位置 = "Redis");
+        crate::log_network_event!("测试网络请求", 端点 = "/api/test", 耗时毫秒 = 150);
+        crate::log_validation_event!("测试数据验证", 验证类型 = "格式检查", 结果 = "通过");
     }
 
     #[test]
@@ -242,27 +409,10 @@ mod tests {
         // 保存guard,防止被drop
         let _guard = result.unwrap();
 
-        // 写入测试日志
-        info!(
-            dependency = "node",
-            status = "satisfied",
-            version = "20.10.0",
-            "依赖检测完成"
-        );
-
-        info!(
-            dependency = "redis",
-            status = "missing",
-            "依赖缺失"
-        );
-
-        warn!(
-            dependency = "playwright",
-            status = "version_mismatch",
-            detected = "1.35.0",
-            required = "1.40.0",
-            "版本不匹配"
-        );
+        // 写入测试日志 - 使用新的中文日志宏
+        crate::log_validation_event!("依赖检测完成", 依赖名称 = "node", 状态 = "满足", 版本 = "20.10.0");
+        crate::log_error!("依赖缺失", 依赖名称 = "redis", 期望状态 = "已安装");
+        crate::log_warn!("版本不匹配", 依赖名称 = "playwright", 检测版本 = "1.35.0", 要求版本 = "1.40.0");
 
         // 验证日志文件已创建
         if log_dir.exists() {

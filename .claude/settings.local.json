@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cargo:*)",
+      "WebSearch",
+      "Bash(playwright --version)",
+      "Read(//home/ubuntu/.cache/ms-playwright/**)",
+      "WebFetch(domain:playwright.dev)",
+      "Bash(node -p \"require(''playwright'').chromium.executablePath()\")"
     ],
     "deny": [],
     "ask": []

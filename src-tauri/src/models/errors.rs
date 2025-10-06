@@ -79,6 +79,12 @@ pub enum ApiError {
         /// 详细错误信息
         details: String,
     },
+
+    /// 浏览器操作错误
+    ///
+    /// Chromium 浏览器启动、操作或通信失败
+    #[error("浏览器错误: {0}")]
+    BrowserError(String),
 }
 
 /// Cookies验证相关错误

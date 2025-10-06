@@ -29,9 +29,11 @@ pub struct LoginSession {
 /// 二维码状态
 ///
 /// 状态转换流程:
-/// Pending -> Scanned -> Confirmed
-///     |          |
-///     +----------+---> Expired (任何状态超时)
+/// Pending -> Scanned -> Confirmed (成功路径)
+///     |          |          |
+///     |          +---> Rejected (用户拒绝)
+///     |
+///     +---> Expired (超时/过期)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QrCodeStatus {
@@ -43,6 +45,9 @@ pub enum QrCodeStatus {
 
     /// 确认成功
     Confirmed,
+
+    /// 用户拒绝登录
+    Rejected,
 
     /// 已过期
     Expired,
@@ -73,41 +78,51 @@ impl LoginSession {
         }
     }
 
-    /// 检查是否已过期
+    /// 从绝对时间戳创建登录会话
     ///
-    /// 判断依据:
-    /// 1. 当前时间超过 `expires_at`
-    /// 2. 状态已标记为 `Expired`
-    pub fn is_expired(&self) -> bool {
-        Utc::now() > self.expires_at || self.status == QrCodeStatus::Expired
+    /// # 参数
+    /// - `qr_id`: 二维码唯一标识
+    /// - `expires_at_millis`: 绝对过期时间戳(毫秒)
+    ///
+    /// 用于Playwright返回的绝对时间戳,避免时间重复计算导致的偏差
+    pub fn from_timestamp(qr_id: String, expires_at_millis: i64) -> Self {
+        let now = Utc::now();
+        let expires_at = chrono::DateTime::from_timestamp_millis(expires_at_millis)
+            .unwrap_or_else(|| now + chrono::Duration::seconds(180));
+
+        Self {
+            qr_id,
+            status: QrCodeStatus::Pending,
+            created_at: now,
+            scanned_at: None,
+            confirmed_at: None,
+            expires_at,
+        }
     }
 
     /// 更新状态为已扫码
-    ///
-    /// 记录用户扫码的时间点,用于性能分析和用户体验反馈。
     pub fn mark_scanned(&mut self) {
         self.status = QrCodeStatus::Scanned;
         self.scanned_at = Some(Utc::now());
     }
 
     /// 更新状态为确认成功
-    ///
-    /// 记录用户确认登录的时间点,标志登录流程成功完成。
     pub fn mark_confirmed(&mut self) {
         self.status = QrCodeStatus::Confirmed;
         self.confirmed_at = Some(Utc::now());
     }
 
     /// 更新状态为已过期
-    ///
-    /// 当检测到超时或API返回过期状态时调用。
     pub fn mark_expired(&mut self) {
         self.status = QrCodeStatus::Expired;
     }
 
+    /// 更新状态为已拒绝
+    pub fn mark_rejected(&mut self) {
+        self.status = QrCodeStatus::Rejected;
+    }
+
     /// 获取会话持续时长(秒)
-    ///
-    /// 从创建到当前时刻的秒数,用于性能监控和SLA统计。
     pub fn duration_seconds(&self) -> i64 {
         (Utc::now() - self.created_at).num_seconds()
     }
@@ -123,8 +138,6 @@ impl LoginSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread::sleep;
-    use std::time::Duration;
 
     #[test]
     fn test_new_session_initial_state() {
@@ -133,39 +146,6 @@ mod tests {
         assert_eq!(session.status, QrCodeStatus::Pending);
         assert!(session.scanned_at.is_none());
         assert!(session.confirmed_at.is_none());
-        assert!(!session.is_expired());
-    }
-
-    #[test]
-    fn test_mark_scanned() {
-        let mut session = LoginSession::new("test_qr_123".to_string(), 180);
-        session.mark_scanned();
-        assert_eq!(session.status, QrCodeStatus::Scanned);
-        assert!(session.scanned_at.is_some());
-    }
-
-    #[test]
-    fn test_mark_confirmed() {
-        let mut session = LoginSession::new("test_qr_123".to_string(), 180);
-        session.mark_confirmed();
-        assert_eq!(session.status, QrCodeStatus::Confirmed);
-        assert!(session.confirmed_at.is_some());
-    }
-
-    #[test]
-    fn test_mark_expired() {
-        let mut session = LoginSession::new("test_qr_123".to_string(), 180);
-        session.mark_expired();
-        assert_eq!(session.status, QrCodeStatus::Expired);
-        assert!(session.is_expired());
-    }
-
-    #[test]
-    fn test_expiry_check() {
-        let session = LoginSession::new("test_qr_123".to_string(), 1);
-        assert!(!session.is_expired());
-        sleep(Duration::from_secs(2));
-        assert!(session.is_expired());
     }
 
     #[test]

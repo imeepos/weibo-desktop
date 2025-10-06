@@ -5,12 +5,6 @@ interface LoginStatusProps {
   isLoading: boolean;
 }
 
-/**
- * 登录状态组件
- *
- * 职责: 将系统事件翻译成人类语言
- * 哲学: 每个事件都值得被优雅地呈现
- */
 export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
   if (isLoading) {
     return (
@@ -62,7 +56,7 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
   const getEventMessage = (): string => {
     switch (event.event_type) {
       case LoginEventType.QrCodeGenerated:
-        return '二维码生成成功';
+        return event.details?.auto_refreshed ? '二维码已自动刷新' : '二维码生成成功';
       case LoginEventType.QrCodeScanned:
         return '已扫描,等待确认';
       case LoginEventType.Confirmed:

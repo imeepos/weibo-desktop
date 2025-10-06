@@ -81,7 +81,7 @@ fn get_predefined_dependencies() -> Vec<Dependency> {
 #[tauri::command]
 pub async fn check_dependencies(
     app_handle: tauri::AppHandle,
-    state: tauri::State<'_, crate::state::AppState>,
+    _state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<Vec<DependencyCheckResult>, String> {
     info!("开始检测所有依赖项");
 
@@ -96,12 +96,6 @@ pub async fn check_dependencies(
         error!("依赖检测失败: {}", e);
         format!("依赖检测失败: {}", e)
     })?;
-
-    // 更新缓存
-    let mut cache = state.check_cache.write().await;
-    for result in &results {
-        cache.insert(result.dependency_id.clone(), result.clone());
-    }
 
     info!("依赖检测完成,共检测 {} 个依赖", results.len());
     Ok(results)
@@ -137,30 +131,36 @@ pub async fn install_dependency(
     Ok(task)
 }
 
-/// 查询依赖状态
+/// 查询依赖状态 (实时检测)
 #[tauri::command]
 pub async fn query_dependency_status(
     dependency_id: Option<String>,
-    state: tauri::State<'_, crate::state::AppState>,
+    _state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<Vec<DependencyCheckResult>, String> {
-    let cache = state.check_cache.read().await;
+    let dependencies = get_predefined_dependencies();
+    let checker = DependencyChecker::new();
 
     let results = if let Some(id) = dependency_id {
         // 查询单个依赖
-        cache
-            .get(&id)
-            .map(|r| vec![r.clone()])
-            .unwrap_or_default()
+        dependencies
+            .into_iter()
+            .filter(|dep| dep.id == id)
+            .filter_map(|dep| {
+                futures::executor::block_on(async {
+                    checker.check_dependency(&dep).await.ok()
+                })
+            })
+            .collect()
     } else {
-        // 查询所有依赖
-        let mut all_results: Vec<DependencyCheckResult> = cache
-            .values()
-            .cloned()
-            .collect();
-
-        // 按dependency_id排序
-        all_results.sort_by(|a, b| a.dependency_id.cmp(&b.dependency_id));
-        all_results
+        // 查询所有依赖 (并发检测)
+        let mut results = Vec::new();
+        for dep in dependencies {
+            if let Ok(result) = checker.check_dependency(&dep).await {
+                results.push(result);
+            }
+        }
+        results.sort_by(|a, b| a.dependency_id.cmp(&b.dependency_id));
+        results
     };
 
     Ok(results)
@@ -170,7 +170,7 @@ pub async fn query_dependency_status(
 #[tauri::command]
 pub async fn trigger_manual_check(
     app_handle: tauri::AppHandle,
-    state: tauri::State<'_, crate::state::AppState>,
+    _state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<Vec<DependencyCheckResult>, DependencyError> {
     info!("用户手动触发依赖检测");
 
@@ -185,13 +185,6 @@ pub async fn trigger_manual_check(
         error!("手动检测失败: {}", e);
         DependencyError::CheckFailed(format!("手动检测失败: {}", e))
     })?;
-
-    // 强制更新缓存
-    let mut cache = state.check_cache.write().await;
-    cache.clear();
-    for result in &results {
-        cache.insert(result.dependency_id.clone(), result.clone());
-    }
 
     let satisfied_count = results.iter().filter(|r| r.is_satisfied()).count();
     info!(

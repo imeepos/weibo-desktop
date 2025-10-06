@@ -13,20 +13,25 @@ fn main() {
     // 初始化日志系统
     utils::logger::init().expect("日志系统初始化失败");
 
-    tracing::info!("Application starting (Playwright mode)...");
+    tracing::info!("应用程序启动 (WebSocket模式)...");
 
-    // 读取配置 - 环境变量提供核心参数
+    // 读取配置
     let redis_url = std::env::var("REDIS_URL")
         .unwrap_or_else(|_| "redis://localhost:6379".to_string());
-    let playwright_login_script = std::env::var("PLAYWRIGHT_LOGIN_SCRIPT")
-        .unwrap_or_else(|_| "../playwright/dist/weibo-login.js".to_string());
+    let playwright_server_url = std::env::var("PLAYWRIGHT_SERVER_URL")
+        .unwrap_or_else(|_| "ws://localhost:9223".to_string());
     let playwright_validation_script = std::env::var("PLAYWRIGHT_VALIDATION_SCRIPT")
         .unwrap_or_else(|_| "../playwright/dist/validate-cookies.js".to_string());
+
+    tracing::info!(
+        playwright_server = %playwright_server_url,
+        "Playwright server 由外部脚本管理 (scripts/start-playwright-server.sh)"
+    );
 
     // 初始化全局状态
     let app_state = AppState::new(
         &redis_url,
-        &playwright_login_script,
+        &playwright_server_url,
         &playwright_validation_script,
     )
     .expect("Failed to initialize AppState");
@@ -36,7 +41,6 @@ fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::qrcode_commands::generate_qrcode,
-            commands::qrcode_commands::poll_login_status,
             commands::cookies_commands::save_cookies,
             commands::cookies_commands::query_cookies,
             commands::cookies_commands::delete_cookies,
@@ -46,8 +50,35 @@ fn main() {
             commands::dependency_commands::query_dependency_status,
             commands::dependency_commands::trigger_manual_check,
         ])
+        .setup(move |_app| {
+            // 浏览器后端选择
+            let backend = std::env::var("BROWSER_BACKEND")
+                .unwrap_or_else(|_| "playwright".to_string());
+
+            match backend.as_str() {
+                #[cfg(feature = "rust-browser-poc")]
+                "rust-poc" => {
+                    tracing::info!("使用 Rust 浏览器 POC (实验性)");
+                    tracing::info!("正在启动内置 WebSocket 服务器 (端口: 9223)...");
+
+                    tokio::spawn(async {
+                        if let Err(e) = services::WebSocketServerPoc::start().await {
+                            tracing::error!("WebSocket 服务器启动失败: {}", e);
+                        } else {
+                            tracing::info!("WebSocket 服务器已停止");
+                        }
+                    });
+                }
+                _ => {
+                    tracing::info!("使用 Playwright Server (稳定,默认)");
+                    tracing::info!("Playwright server 由外部脚本管理: {}", playwright_server_url);
+                }
+            }
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("启动Tauri应用时发生错误");
 
-    tracing::info!("Application stopped");
+    tracing::info!("应用程序已停止");
 }

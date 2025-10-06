@@ -17,6 +17,7 @@
 pub mod cookies_data;
 pub mod dependency;
 pub mod errors;
+pub mod events;
 pub mod login_session;
 
 // 重导出常用类型,简化外部引用
@@ -25,8 +26,20 @@ pub use dependency::{
     Dependency, DependencyLevel, CheckMethod, CheckStatus, DependencyCheckResult,
     InstallationTask, InstallStatus
 };
-pub use errors::{
-    ApiError, StorageError, ValidationError,
-    DependencyError, InstallErrorType
-};
+pub use errors::{ApiError, StorageError, ValidationError};
 pub use login_session::{LoginSession, QrCodeStatus};
+
+/// 解析微博API返回码为二维码状态
+///
+/// 单一真相来源: 直接映射微博API的retcode
+/// 参考: https://passport.weibo.com/sso/v2/qrcode/check
+pub fn parse_qr_status(retcode: i32) -> QrCodeStatus {
+    match retcode {
+        20000000 | 50114001 => QrCodeStatus::Pending,
+        50114002 => QrCodeStatus::Scanned,
+        50114003 | 50114007 => QrCodeStatus::Rejected,
+        50114004 | 50114005 | 50114006 => QrCodeStatus::Expired,
+        20000001 => QrCodeStatus::Confirmed,
+        _ => QrCodeStatus::Expired,
+    }
+}

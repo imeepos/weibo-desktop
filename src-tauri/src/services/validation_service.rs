@@ -51,12 +51,82 @@ impl ValidationService {
     /// ```
     pub fn new(playwright_script_path: String) -> Self {
         tracing::info!(
-            script_path = %playwright_script_path,
-            "Validation service initialized"
+            脚本路径 = %playwright_script_path,
+            "验证服务初始化完成"
         );
         Self {
             playwright_script_path,
         }
+    }
+
+    /// 执行Playwright脚本
+    async fn execute_playwright_script(
+        &self,
+        input_json: &str,
+    ) -> Result<std::process::Output, ValidationError> {
+        let output = Command::new("node")
+            .arg(&self.playwright_script_path)
+            .arg(input_json)
+            .output()
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    错误 = %e,
+                    脚本路径 = %self.playwright_script_path,
+                    "执行Playwright脚本失败"
+                );
+                ValidationError::PlaywrightFailed(format!("Failed to execute: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!(
+                退出码 = ?output.status.code(),
+                错误输出 = %stderr,
+                "Playwright脚本执行出错"
+            );
+            return Err(ValidationError::PlaywrightFailed(stderr.to_string()));
+        }
+
+        Ok(output)
+    }
+
+    /// 解析验证结果
+    fn parse_validation_result(
+        output: &[u8],
+    ) -> Result<PlaywrightValidationResult, ValidationError> {
+        serde_json::from_slice(output).map_err(|e| {
+            let stdout = String::from_utf8_lossy(output);
+            tracing::error!(错误 = %e, 标准输出 = %stdout, "解析Playwright输出失败");
+            ValidationError::PlaywrightFailed(format!(
+                "Failed to parse output: {}. Output: {}",
+                e, stdout
+            ))
+        })
+    }
+
+    /// 提取用户信息
+    fn extract_user_info(
+        result: PlaywrightValidationResult,
+    ) -> Result<(String, String), ValidationError> {
+        if !result.valid {
+            let error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
+            tracing::warn!(错误 = %error_msg, "Cookies验证失败");
+            return Err(ValidationError::ProfileApiFailed {
+                status: 401,
+                message: error_msg,
+            });
+        }
+
+        let uid = result.uid.ok_or_else(|| {
+            tracing::error!("验证结果缺少用户ID");
+            ValidationError::UidExtractionFailed("Missing UID in validation result".into())
+        })?;
+
+        let screen_name = result.screen_name.unwrap_or_else(|| "Unknown".to_string());
+
+        tracing::info!(用户ID = %uid, 昵称 = %screen_name, "Cookies验证成功");
+        Ok((uid, screen_name))
     }
 
     /// 验证Cookies有效性
@@ -90,81 +160,19 @@ impl ValidationService {
             .map_err(|e| ValidationError::PlaywrightFailed(e.to_string()))?;
 
         tracing::debug!(
-            script_path = %self.playwright_script_path,
-            cookies_count = %cookies.len(),
-            "Starting Playwright validation"
+            脚本路径 = %self.playwright_script_path,
+            cookies数量 = %cookies.len(),
+            "开始Playwright验证"
         );
 
-        // 调用Playwright脚本
-        let output = Command::new("node")
-            .arg(&self.playwright_script_path)
-            .arg(&input_json)
-            .output()
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    error = %e,
-                    script_path = %self.playwright_script_path,
-                    "Failed to execute Playwright script"
-                );
-                ValidationError::PlaywrightFailed(format!("Failed to execute: {}", e))
-            })?;
+        // 执行脚本
+        let output = self.execute_playwright_script(&input_json).await?;
 
-        // 检查退出状态
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            tracing::error!(
-                exit_code = ?output.status.code(),
-                stderr = %stderr,
-                "Playwright script exited with error"
-            );
-            return Err(ValidationError::PlaywrightFailed(stderr.to_string()));
-        }
+        // 解析结果
+        let result = Self::parse_validation_result(&output.stdout)?;
 
-        // 解析输出
-        let result: PlaywrightValidationResult =
-            serde_json::from_slice(&output.stdout).map_err(|e| {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                tracing::error!(
-                    error = %e,
-                    stdout = %stdout,
-                    "Failed to parse Playwright output"
-                );
-                ValidationError::PlaywrightFailed(format!(
-                    "Failed to parse output: {}. Output: {}",
-                    e, stdout
-                ))
-            })?;
-
-        // 检查验证结果
-        if !result.valid {
-            let error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
-            tracing::warn!(
-                error = %error_msg,
-                cookies_count = %cookies.len(),
-                "Cookies validation failed"
-            );
-            return Err(ValidationError::ProfileApiFailed {
-                status: 401,
-                message: error_msg,
-            });
-        }
-
-        // 提取UID和昵称
-        let uid = result.uid.ok_or_else(|| {
-            tracing::error!("Validation result missing UID");
-            ValidationError::UidExtractionFailed("Missing UID in validation result".into())
-        })?;
-
-        let screen_name = result.screen_name.unwrap_or_else(|| "Unknown".to_string());
-
-        tracing::info!(
-            uid = %uid,
-            screen_name = %screen_name,
-            "Cookies validation successful"
-        );
-
-        Ok((uid, screen_name))
+        // 提取用户信息
+        Self::extract_user_info(result)
     }
 }
 

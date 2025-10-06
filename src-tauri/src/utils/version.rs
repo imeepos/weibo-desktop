@@ -23,7 +23,7 @@ impl Version {
     }
 
     /// 比较版本大小
-    pub fn compare(&self, other: &Version) -> Ordering {
+    pub fn compare(&self, _other: &Version) -> Ordering {
         // TODO: 实现版本比较逻辑
         todo!("比较版本")
     }

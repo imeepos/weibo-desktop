@@ -33,15 +33,28 @@ impl RedisService {
         let config = Config::from_url(redis_url);
         let pool = config.create_pool(Some(Runtime::Tokio1)).map_err(|e| {
             tracing::error!(
-                redis_url = %redis_url,
-                error = %e,
-                "Failed to create Redis connection pool"
+                Redis连接URL = %redis_url,
+                错误 = %e,
+                "创建Redis连接池失败"
             );
             StorageError::RedisConnectionFailed(e.to_string())
         })?;
 
-        tracing::info!(redis_url = %redis_url, "Redis connection pool created");
+        tracing::info!(Redis连接URL = %redis_url, "Redis连接池创建成功");
         Ok(Self { pool })
+    }
+
+    /// 准备Redis字段数据
+    fn prepare_redis_fields(
+        cookies_data: &CookiesData,
+    ) -> Result<(String, String, String), StorageError> {
+        let cookies_json = serde_json::to_string(&cookies_data.cookies)
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+        let fetched_at_str = cookies_data.fetched_at.timestamp().to_string();
+        let validated_at_str = cookies_data.validated_at.timestamp().to_string();
+
+        Ok((cookies_json, fetched_at_str, validated_at_str))
     }
 
     /// 保存Cookies到Redis
@@ -74,15 +87,11 @@ impl RedisService {
             .await
             .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
 
-        // 序列化cookies为JSON
-        let cookies_json = serde_json::to_string(&cookies_data.cookies)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+        // 准备字段数据
+        let (cookies_json, fetched_at_str, validated_at_str) =
+            Self::prepare_redis_fields(cookies_data)?;
 
-        // 准备时间戳字符串 (需要保持在作用域内)
-        let fetched_at_str = cookies_data.fetched_at.timestamp().to_string();
-        let validated_at_str = cookies_data.validated_at.timestamp().to_string();
-
-        // 使用HSET保存所有字段
+        // 保存基础字段
         let fields = vec![
             ("cookies", cookies_json.as_str()),
             ("fetched_at", fetched_at_str.as_str()),
@@ -97,7 +106,7 @@ impl RedisService {
             .await
             .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
 
-        // 如果有昵称,也保存
+        // 保存昵称(可选)
         if let Some(ref screen_name) = cookies_data.screen_name {
             conn.hset::<_, _, _, ()>(&cookies_data.redis_key, "screen_name", screen_name)
                 .await
@@ -111,11 +120,11 @@ impl RedisService {
             .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
 
         tracing::info!(
-            uid = %cookies_data.uid,
-            redis_key = %cookies_data.redis_key,
-            is_overwrite = %exists,
-            cookies_sample = %cookies_data.sample_for_logging(),
-            "Cookies saved to Redis"
+            用户ID = %cookies_data.uid,
+            Redis键 = %cookies_data.redis_key,
+            是否覆盖 = %exists,
+            Cookies样本 = %cookies_data.sample_for_logging(),
+            "Cookies已保存到Redis"
         );
 
         Ok(exists)
@@ -149,7 +158,7 @@ impl RedisService {
             .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
 
         if !exists {
-            tracing::warn!(uid = %uid, "Cookies not found in Redis");
+            tracing::warn!(用户ID = %uid, "Redis中未找到Cookies");
             return Err(StorageError::NotFound(uid.to_string()));
         }
 
@@ -189,10 +198,10 @@ impl RedisService {
         };
 
         tracing::debug!(
-            uid = %uid,
-            redis_key = %redis_key,
-            cookies_sample = %cookies_data.sample_for_logging(),
-            "Cookies retrieved from Redis"
+            用户ID = %uid,
+            Redis键 = %redis_key,
+            Cookies样本 = %cookies_data.sample_for_logging(),
+            "从Redis检索到Cookies"
         );
 
         Ok(cookies_data)
@@ -220,7 +229,7 @@ impl RedisService {
             .await
             .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
 
-        tracing::info!(uid = %uid, redis_key = %redis_key, "Cookies deleted from Redis");
+        tracing::info!(用户ID = %uid, Redis键 = %redis_key, "已从Redis删除Cookies");
         Ok(())
     }
 
@@ -254,7 +263,7 @@ impl RedisService {
             .filter_map(|key| key.strip_prefix("weibo:cookies:").map(String::from))
             .collect();
 
-        tracing::debug!(count = keys.len(), "Listed all UIDs from Redis");
+        tracing::debug!(数量 = %keys.len(), "从Redis列出所有UID");
         Ok(uids)
     }
 }

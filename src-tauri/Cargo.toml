@@ -30,7 +30,20 @@ serde_json = "1.0"
 tokio = { version = "1.35", features = ["full"] }
 
 # HTTP客户端: 调用微博API,自动管理cookies (使用rustls避免系统OpenSSL依赖)
-reqwest = { version = "0.11", default-features = false, features = ["json", "cookies", "rustls-tls"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "cookies", "rustls-tls", "blocking"] }
+
+# WebSocket: 服务器和客户端支持
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
+
+# 浏览器自动化: Chrome DevTools Protocol (POC 功能)
+chromiumoxide = { version = "0.7.0", optional = true }
+
+# Base64 编码: QR code 图片转换 (POC 功能)
+base64 = { version = "0.22", optional = true }
+
+# 单例模式: 全局浏览器实例 (POC 功能)
+once_cell = { version = "1.19", optional = true }
 
 # Redis客户端: 持久化存储cookies
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
@@ -69,5 +82,9 @@ path = "src/lib.rs"
 
 [features]
 # Tauri默认功能: 自定义协议用于前后端通信
-default = ["custom-protocol"]
+default = ["custom-protocol", "playwright-server"]
 custom-protocol = ["tauri/custom-protocol"]
+
+# 浏览器后端选择
+playwright-server = []  # 使用外部 Playwright Server (稳定,默认)
+rust-browser-poc = ["chromiumoxide", "base64", "once_cell"]  # 使用 Rust POC (实验性)
