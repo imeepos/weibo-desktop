@@ -16,6 +16,13 @@ import {
   QrCodeStatus,
 } from '../types/weibo';
 
+interface PlaywrightStatus {
+  running: boolean;
+  pid?: number;
+  port: number;
+  healthy: boolean;
+}
+
 const createEventFromStatus = (event: LoginStatusEvent): LoginEvent | null => {
   const baseEvent = {
     session_id: event.qr_id,
@@ -58,12 +65,24 @@ export const LoginPage = () => {
   const qrDataRef = useRef<GenerateQrcodeResponse | null>(null);
   const [qrData, setQrData] = useState<GenerateQrcodeResponse | null>(null);
   const [currentEvent, setCurrentEvent] = useState<LoginEvent | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [playwrightStatus, setPlaywrightStatus] = useState<PlaywrightStatus | null>(null);
+  const [isStartingServer, setIsStartingServer] = useState(false);
 
   useEffect(() => {
     qrDataRef.current = qrData;
   }, [qrData]);
+
+  const checkPlaywrightServer = useCallback(async () => {
+    try {
+      const status = await invoke<PlaywrightStatus>('check_playwright_server');
+      setPlaywrightStatus(status);
+      return status;
+    } catch (err) {
+      console.error('检查Playwright服务器状态失败:', err);
+      return null;
+    }
+  }, []);
 
   const generateQrcode = useCallback(async () => {
     setIsGenerating(true);
@@ -81,11 +100,34 @@ export const LoginPage = () => {
         details: {},
       });
     } catch (err) {
-      setError(handleTauriError(err));
-    } finally {
-      setIsGenerating(false);
+      const errorMsg = handleTauriError(err);
+      setError(errorMsg);
+
+      if (errorMsg.includes('Playwright服务器未运行')) {
+        await checkPlaywrightServer();
+      }
     }
-  }, []);
+  }, [checkPlaywrightServer]);
+
+  const startPlaywrightServer = useCallback(async () => {
+    setIsStartingServer(true);
+    try {
+      await invoke('start_playwright_server');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const status = await checkPlaywrightServer();
+      if (status?.healthy) {
+        setError(null);
+        await generateQrcode();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      setError(handleTauriError(err));
+      return false;
+    } finally {
+      setIsStartingServer(false);
+    }
+  }, [checkPlaywrightServer, generateQrcode]);
 
   const handleExpired = useCallback(() => {
     setCurrentEvent(prev =>
@@ -105,11 +147,11 @@ export const LoginPage = () => {
   }, []);
 
   useEffect(() => {
-    generateQrcode();
+    void generateQrcode();
   }, [generateQrcode]);
 
   useKeyboardShortcut([
-    { key: 'r', ctrl: true, callback: () => generateQrcode() },
+    { key: 'r', ctrl: true, callback: () => void generateQrcode() },
     { key: 'c', ctrl: true, callback: () => navigate('/cookies') },
     { key: 'd', ctrl: true, callback: () => navigate('/dependency') },
   ]);
@@ -207,7 +249,24 @@ export const LoginPage = () => {
               <span className="text-xl">❌</span>
               <div className="flex-1">
                 <p className="font-semibold text-red-900 mb-1">操作失败</p>
-                <p className="text-red-700 text-sm">{error}</p>
+                <p className="text-red-700 text-sm whitespace-pre-line">{error}</p>
+
+                {error.includes('Playwright服务器未运行') && playwrightStatus && !playwrightStatus.healthy && (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-xs text-gray-600">
+                      服务状态: {playwrightStatus.running ? '进程运行中' : '未运行'} |
+                      健康检查: {playwrightStatus.healthy ? '通过' : '失败'}
+                      {playwrightStatus.pid && ` (PID: ${playwrightStatus.pid})`}
+                    </div>
+                    <button
+                      onClick={startPlaywrightServer}
+                      disabled={isStartingServer}
+                      className={`w-full ${BUTTON.PRIMARY} ${isStartingServer ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {isStartingServer ? '正在启动服务器...' : '自动启动 Playwright 服务器'}
+                    </button>
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setError(null)}
