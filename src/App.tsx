@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { DependencyCheckPage } from './pages/DependencyCheckPage';
 import { LoginPage } from './pages/LoginPage';
 import { CookiesListPage } from './pages/CookiesListPage';
+import { PlaywrightServicePage } from './pages/PlaywrightServicePage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cookies" element={<CookiesListPage />} />
             <Route path="/dependency" element={<DependencyCheckPage />} />
+            <Route path="/playwright" element={<PlaywrightServicePage />} />
           </Routes>
         </Layout>
       </BrowserRouter>

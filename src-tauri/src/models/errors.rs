@@ -85,6 +85,13 @@ pub enum ApiError {
     /// Chromium 浏览器启动、操作或通信失败
     #[error("浏览器错误: {0}")]
     BrowserError(String),
+
+    /// Playwright WebSocket服务器未运行
+    ///
+    /// 无法连接到Playwright WebSocket服务器(ws://localhost:9223)
+    /// 需要先启动服务器: ./scripts/start-playwright-server.sh
+    #[error("Playwright服务器未运行,请先启动: ./scripts/start-playwright-server.sh")]
+    PlaywrightServerNotRunning,
 }
 
 /// Cookies验证相关错误

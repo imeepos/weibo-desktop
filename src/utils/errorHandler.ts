@@ -9,6 +9,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   ConnectionTimeout: '连接超时,请稍后重试',
   RequestFailed: '请求失败,请稍后重试',
 
+  // Playwright服务器相关
+  PlaywrightServerNotRunning: 'Playwright服务器未运行\n\n请在终端执行以下命令启动:\n./scripts/start-playwright-server.sh\n\n或者检查9223端口是否被占用',
+
   // 二维码相关
   QrCodeExpired: '二维码已过期,请重新生成',
   QrCodeGenerationFailed: '二维码生成失败,请重试',

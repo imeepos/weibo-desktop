@@ -65,6 +65,45 @@ export const LoginPage = () => {
     qrDataRef.current = qrData;
   }, [qrData]);
 
+  const generateQrcode = useCallback(async () => {
+    setIsGenerating(true);
+    setError(null);
+    setCurrentEvent(null);
+
+    try {
+      const response = await invoke<GenerateQrcodeResponse>('generate_qrcode');
+      setQrData(response);
+
+      setCurrentEvent({
+        event_type: LoginEventType.QrCodeGenerated,
+        timestamp: new Date().toISOString(),
+        session_id: response.qr_id,
+        details: {},
+      });
+    } catch (err) {
+      setError(handleTauriError(err));
+    } finally {
+      setIsGenerating(false);
+    }
+  }, []);
+
+  const handleExpired = useCallback(() => {
+    setCurrentEvent(prev =>
+      prev?.event_type !== LoginEventType.QrCodeExpired ? {
+        event_type: LoginEventType.QrCodeExpired,
+        timestamp: new Date().toISOString(),
+        session_id: qrDataRef.current?.qr_id || '',
+        details: {},
+      } : prev
+    );
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setQrData(null);
+    setCurrentEvent(null);
+    setError(null);
+  }, []);
+
   useEffect(() => {
     generateQrcode();
   }, [generateQrcode]);
@@ -141,45 +180,6 @@ export const LoginPage = () => {
       unlistenError?.();
     };
   }, [navigate]);
-
-  const generateQrcode = useCallback(async () => {
-    setIsGenerating(true);
-    setError(null);
-    setCurrentEvent(null);
-
-    try {
-      const response = await invoke<GenerateQrcodeResponse>('generate_qrcode');
-      setQrData(response);
-
-      setCurrentEvent({
-        event_type: LoginEventType.QrCodeGenerated,
-        timestamp: new Date().toISOString(),
-        session_id: response.qr_id,
-        details: {},
-      });
-    } catch (err) {
-      setError(handleTauriError(err));
-    } finally {
-      setIsGenerating(false);
-    }
-  }, []);
-
-  const handleExpired = useCallback(() => {
-    setCurrentEvent(prev =>
-      prev?.event_type !== LoginEventType.QrCodeExpired ? {
-        event_type: LoginEventType.QrCodeExpired,
-        timestamp: new Date().toISOString(),
-        session_id: qrDataRef.current?.qr_id || '',
-        details: {},
-      } : prev
-    );
-  }, []);
-
-  const handleReset = useCallback(() => {
-    setQrData(null);
-    setCurrentEvent(null);
-    setError(null);
-  }, []);
 
   const currentStatus = useMemo(() => {
     if (!currentEvent) return undefined;

@@ -8,6 +8,7 @@ export const Navbar = () => {
     { path: '/login', label: '扫码登录', icon: '🔐' },
     { path: '/cookies', label: 'Cookies管理', icon: '🍪' },
     { path: '/dependency', label: '依赖检测', icon: '⚙️' },
+    { path: '/playwright', label: 'Playwright服务', icon: '🤖' },
   ];
 
   const isActive = (path: string) => location.pathname === path;

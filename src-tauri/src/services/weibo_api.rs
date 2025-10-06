@@ -162,7 +162,8 @@ impl WeiboApiClient {
     /// - `WsStream`: WebSocket连接流
     ///
     /// # 错误
-    /// - `ApiError::NetworkFailed`: 重试耗尽后仍然失败
+    /// - `ApiError::PlaywrightServerNotRunning`: Playwright服务器未启动
+    /// - `ApiError::NetworkFailed`: 其他网络错误
     async fn connect_with_retry(url: &str, max_retries: u32) -> Result<(WsStream, tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>), ApiError> {
         use tokio::time::{sleep, Duration};
 
@@ -184,8 +185,19 @@ impl WeiboApiClient {
                     sleep(Duration::from_secs(2)).await;
                 }
                 Err(e) => {
-                    tracing::error!(错误 = %e, URL = %url, 尝试次数 = max_retries, "WebSocket连接失败 (重试耗尽)");
-                    return Err(ApiError::NetworkFailed(format!("WebSocket connection failed after {} retries: {}", max_retries, e)));
+                    let error_msg = e.to_string().to_lowercase();
+
+                    if error_msg.contains("connection refused") || error_msg.contains("connect error") {
+                        tracing::error!(
+                            错误 = %e,
+                            URL = %url,
+                            "Playwright WebSocket服务器未运行"
+                        );
+                        return Err(ApiError::PlaywrightServerNotRunning);
+                    }
+
+                    tracing::error!(错误 = %e, URL = %url, 尝试次数 = max_retries, "WebSocket连接失败");
+                    return Err(ApiError::NetworkFailed(format!("WebSocket连接失败: {}", e)));
                 }
             }
         }

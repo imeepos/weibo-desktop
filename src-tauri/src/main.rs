@@ -51,6 +51,10 @@ fn main() {
             commands::dependency_commands::trigger_manual_check,
             commands::log_commands::log_frontend_event,
             commands::log_commands::log_frontend_batch,
+            commands::playwright_commands::start_playwright_server,
+            commands::playwright_commands::stop_playwright_server,
+            commands::playwright_commands::check_playwright_server,
+            commands::playwright_commands::get_playwright_logs,
         ])
         .setup(move |_app| {
             // 浏览器后端选择
