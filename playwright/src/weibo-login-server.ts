@@ -80,6 +80,7 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
       console.log(`会话超时: ${sessionId}`);
       sessionClosed = true;
       if (ws.readyState === WebSocket.OPEN) {
+        console.log(`[${sessionId}] 发送 WebSocket 消息: type=status_update, retcode=50114004 (过期)`);
         ws.send(JSON.stringify({
           type: 'status_update',
           session_id: sessionId,
@@ -95,22 +96,36 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
 
   // 注册会话
   activeSessions.set(sessionId, { context, timeout: timeoutHandle });
+  console.log(`会话已创建: ${sessionId}, 超时时间: ${QR_TIMEOUT_MS}ms (${QR_TIMEOUT_MS / 1000}秒)`);
 
   page.on('response', async (response) => {
     if (!response.url().includes('/sso/v2/qrcode/check') || sessionClosed) return;
 
+    console.debug(`[${sessionId}] 捕获 /sso/v2/qrcode/check 响应`);
+
     try {
-      if (response.status() !== 200) return;
+      const status = response.status();
+      console.debug(`[${sessionId}] 响应状态码: ${status}`);
+
+      if (status !== 200) return;
 
       const data = await response.json();
       const currentRetcode = data.retcode;
+      const msg = data.msg || '';
+
+      console.log(`[${sessionId}] retcode=${currentRetcode}, msg="${msg}"`);
 
       if (currentRetcode !== lastRetcode && ws.readyState === WebSocket.OPEN) {
+        if (lastRetcode !== null) {
+          console.log(`[${sessionId}] ⚠️  状态变化: retcode ${lastRetcode} -> ${currentRetcode}`);
+        }
+
+        console.log(`[${sessionId}] 发送 WebSocket 消息: type=status_update, retcode=${currentRetcode}`);
         ws.send(JSON.stringify({
           type: 'status_update',
           session_id: sessionId,
           retcode: data.retcode,
-          msg: data.msg || '',
+          msg: msg,
           data: data.data || null,
           timestamp: Date.now()
         }));
@@ -118,6 +133,7 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
 
         // 如果是终止状态,清理会话
         if ([50114003, 50114004, 50114005, 50114006, 50114007].includes(currentRetcode)) {
+          console.log(`[${sessionId}] 检测到终止状态 (retcode=${currentRetcode}), 即将清理会话`);
           sessionClosed = true;
           await cleanupSession(sessionId);
         }
@@ -131,17 +147,24 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
       const isLoginSuccess = errorMessage.includes('No resource with given identifier found');
 
       if (isLoginSuccess) {
+        console.log(`[${sessionId}] ✅ 检测到登录成功信号 (资源已销毁错误)`);
+
         try {
           const cookies = await context.cookies();
           const cookieMap: Record<string, string> = {};
           cookies.forEach(c => { cookieMap[c.name] = c.value; });
+
+          console.log(`[${sessionId}] 提取到 ${cookies.length} 个 cookies`);
 
           // 从 SUB cookie 提取 uid (格式: _2AxxxxUID)
           const subCookie = cookieMap['SUB'] || '';
           const uidMatch = subCookie.match(/_2A[A-Za-z0-9-_]+/);
           const uid = uidMatch ? uidMatch[0] : '';
 
+          console.log(`[${sessionId}] 提取 UID: ${uid || '(未找到)'}`);
+
           if (ws.readyState === WebSocket.OPEN) {
+            console.log(`[${sessionId}] 发送 WebSocket 消息: type=login_confirmed, uid=${uid}`);
             ws.send(JSON.stringify({
               type: 'login_confirmed',
               session_id: sessionId,
@@ -220,6 +243,7 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
   const expiresAt = now + QR_TIMEOUT_MS;
 
   if (ws.readyState === WebSocket.OPEN) {
+    console.log(`[${sessionId}] 发送 WebSocket 消息: type=qrcode_generated, expires_in=${Math.floor(QR_TIMEOUT_MS / 1000)}秒`);
     ws.send(JSON.stringify({
       type: 'qrcode_generated',
       session_id: sessionId,

@@ -112,6 +112,7 @@ async fn monitor_login(
             Ok(Message::Text(text)) => {
                 match serde_json::from_str::<WsEvent>(&text) {
                     Ok(WsEvent::QrcodeGenerated { .. }) => None,
+                    Ok(WsEvent::Pong { .. }) => None, // 跳过健康检查响应
                     Ok(WsEvent::StatusUpdate { retcode, msg, data, .. }) => {
                         Some(Ok((parse_qr_status(retcode), None, None, None, Some(retcode), Some(msg), data)))
                     }
