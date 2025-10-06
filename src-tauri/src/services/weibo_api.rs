@@ -55,6 +55,9 @@ pub enum WsEvent {
         message: String,
         timestamp: i64,
     },
+    Pong {
+        timestamp: i64,
+    },
 }
 
 impl WeiboApiClient {
@@ -92,7 +95,12 @@ impl WeiboApiClient {
         // 连接WebSocket (带重试)
         let (mut ws_stream, _) = Self::connect_with_retry(ws_url, 3).await?;
 
-        tracing::debug!("WebSocket连接成功,发送 generate_qrcode 消息");
+        tracing::debug!("WebSocket连接成功,执行健康检查");
+
+        // 健康检查: 发送ping并等待pong响应
+        Self::verify_connection_health(&mut ws_stream).await?;
+
+        tracing::debug!("健康检查通过,发送 generate_qrcode 消息");
 
         // 发送生成二维码请求
         let request = serde_json::json!({
@@ -152,6 +160,136 @@ impl WeiboApiClient {
         Err(ApiError::NetworkFailed("WebSocket connection closed unexpectedly".to_string()))
     }
 
+    /// 验证WebSocket连接健康状态
+    ///
+    /// 发送ping消息并等待pong响应以确认服务器正常运行
+    ///
+    /// # 参数
+    /// - `ws_stream`: WebSocket连接流
+    ///
+    /// # 错误
+    /// - `ApiError::PlaywrightServerNotRunning`: 服务器未响应健康检查
+    /// - `ApiError::NetworkFailed`: 网络通信失败
+    async fn verify_connection_health(ws_stream: &mut WsStream) -> Result<(), ApiError> {
+        use tokio::time::{timeout, Duration};
+
+        tracing::debug!("发送ping消息验证服务器健康状态");
+
+        // 发送ping请求
+        let ping_request = serde_json::json!({
+            "type": "ping"
+        });
+
+        ws_stream.send(Message::Text(ping_request.to_string())).await.map_err(|e| {
+            tracing::error!(错误 = %e, "发送ping消息失败");
+            ApiError::NetworkFailed(format!("Failed to send ping: {}", e))
+        })?;
+
+        // 等待pong响应 (超时3秒)
+        let pong_result = timeout(Duration::from_secs(3), async {
+            while let Some(msg_result) = ws_stream.next().await {
+                match msg_result {
+                    Ok(Message::Text(text)) => {
+                        match serde_json::from_str::<WsEvent>(&text) {
+                            Ok(WsEvent::Pong { timestamp }) => {
+                                tracing::info!(服务器时间戳 = timestamp, "收到pong响应,服务器健康");
+                                return Ok(());
+                            }
+                            Ok(_other) => {
+                                tracing::debug!("跳过非pong消息,继续等待");
+                                continue;
+                            }
+                            Err(e) => {
+                                tracing::warn!(错误 = %e, 消息 = %text, "消息解析失败,继续等待");
+                                continue;
+                            }
+                        }
+                    }
+                    Ok(_msg) => {
+                        tracing::debug!("跳过非文本消息");
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::error!(错误 = %e, "接收消息失败");
+                        return Err(ApiError::NetworkFailed(format!("Failed to receive pong: {}", e)));
+                    }
+                }
+            }
+            Err(ApiError::NetworkFailed("WebSocket连接在等待pong时关闭".to_string()))
+        }).await;
+
+        match pong_result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => {
+                tracing::error!("健康检查超时,服务器未响应pong");
+                Err(ApiError::PlaywrightServerNotRunning)
+            }
+        }
+    }
+
+    /// 诊断Playwright服务器状态
+    ///
+    /// 检测:
+    /// 1. 端口9223是否被监听
+    /// 2. 能否建立TCP连接
+    /// 3. 能否建立WebSocket连接
+    ///
+    /// # 返回值
+    /// - `String`: 详细的诊断信息
+    pub async fn diagnose_server_status(&self) -> String {
+        use tokio::time::{timeout, Duration};
+
+        let mut diagnosis = String::from("=== Playwright服务器状态诊断 ===\n");
+
+        tracing::debug!("开始诊断Playwright服务器状态");
+
+        // 1. TCP连接测试
+        diagnosis.push_str("\n[1] TCP连接测试 (127.0.0.1:9223):\n");
+        match timeout(Duration::from_secs(2), TcpStream::connect("127.0.0.1:9223")).await {
+            Ok(Ok(_stream)) => {
+                diagnosis.push_str("  ✓ TCP连接成功 - 端口正在监听\n");
+                tracing::debug!("TCP连接测试通过");
+            }
+            Ok(Err(e)) => {
+                diagnosis.push_str(&format!("  ✗ TCP连接失败: {}\n", e));
+                diagnosis.push_str("  → 端口9223未被监听\n");
+                tracing::debug!(错误 = %e, "TCP连接测试失败");
+            }
+            Err(_) => {
+                diagnosis.push_str("  ✗ TCP连接超时 (2秒)\n");
+                tracing::debug!("TCP连接测试超时");
+            }
+        }
+
+        // 2. WebSocket连接测试
+        diagnosis.push_str("\n[2] WebSocket连接测试 (ws://localhost:9223):\n");
+        match timeout(Duration::from_secs(3), connect_async("ws://localhost:9223")).await {
+            Ok(Ok(_)) => {
+                diagnosis.push_str("  ✓ WebSocket连接成功\n");
+                tracing::debug!("WebSocket连接测试通过");
+            }
+            Ok(Err(e)) => {
+                diagnosis.push_str(&format!("  ✗ WebSocket连接失败: {}\n", e));
+                tracing::debug!(错误 = %e, "WebSocket连接测试失败");
+            }
+            Err(_) => {
+                diagnosis.push_str("  ✗ WebSocket连接超时 (3秒)\n");
+                tracing::debug!("WebSocket连接测试超时");
+            }
+        }
+
+        // 3. 解决方案建议
+        diagnosis.push_str("\n[解决方案]:\n");
+        diagnosis.push_str("  请在项目根目录运行以下命令启动Playwright服务器:\n");
+        diagnosis.push_str("  $ pnpm --filter playwright dev\n");
+        diagnosis.push_str("\n  或使用Docker Compose:\n");
+        diagnosis.push_str("  $ docker compose up playwright\n");
+
+        tracing::debug!("诊断完成");
+        diagnosis
+    }
+
     /// WebSocket连接重试
     ///
     /// # 参数
@@ -193,6 +331,12 @@ impl WeiboApiClient {
                             URL = %url,
                             "Playwright WebSocket服务器未运行"
                         );
+
+                        // 执行服务器状态诊断
+                        let client = WeiboApiClient::new(url.to_string());
+                        let diagnosis = client.diagnose_server_status().await;
+                        tracing::error!(诊断结果 = %diagnosis, "服务器状态诊断");
+
                         return Err(ApiError::PlaywrightServerNotRunning);
                     }
 
