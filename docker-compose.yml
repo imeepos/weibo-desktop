@@ -158,11 +158,52 @@ services:
       - debug  # 使用 docker compose --profile debug up 启动
 
   # ==========================================
+  # Playwright 验证服务器 - 微博Cookies验证
+  # ==========================================
+  playwright-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    container_name: desktop-playwright-server
+    working_dir: /workspace/desktop/playwright
+    volumes:
+      - ./playwright:/workspace/desktop/playwright
+      - /workspace/desktop/playwright/node_modules
+    networks:
+      app-network:
+        ipv4_address: 172.28.0.14
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://172.28.0.10:6379
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    command: |
+      bash -c "
+        cd /workspace/desktop/playwright &&
+        pnpm install --frozen-lockfile &&
+        pnpm exec playwright install chromium --with-deps &&
+        pnpm run build &&
+        pnpm run server
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    shm_size: '2gb'
+    restart: unless-stopped
+
+  # ==========================================
   # Playwright 测试环境 - E2E测试
   # ==========================================
   playwright-tests:
     image: mcr.microsoft.com/playwright:v1.40.0-jammy
-    container_name: desktop-playwright
+    container_name: desktop-playwright-tests
     working_dir: /workspace/desktop
     volumes:
       - .:/workspace/desktop
@@ -172,8 +213,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      playwright-server:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://172.28.0.10:6379
+      - PLAYWRIGHT_SERVER_URL=http://172.28.0.14:3000
       - CI=true
       - PLAYWRIGHT_HEADLESS=true
       - PWDEBUG=0
@@ -209,11 +253,14 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      playwright-server:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://172.28.0.10:6379
       - DATABASE_URL=postgresql://desktop_user:desktop_pass@172.28.0.11:5432/weibo_desktop
       - MONGODB_URL=mongodb://root:root_pass@172.28.0.12:27017/weibo_desktop?authSource=admin
       - RABBITMQ_URL=amqp://desktop_user:desktop_pass@172.28.0.13:5672/weibo_desktop
+      - PLAYWRIGHT_SERVER_URL=http://172.28.0.14:3000
       - DISPLAY=:99
       - RUST_LOG=info
     ports:
