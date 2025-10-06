@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use tokio::process::Command;
 
@@ -27,14 +27,6 @@ struct PlaywrightValidationResult {
     error: Option<String>,
 }
 
-/// Playwright脚本输入
-///
-/// 传递给Node.js脚本的JSON结构
-#[derive(Debug, Serialize)]
-struct PlaywrightInput {
-    /// Cookie键值对
-    cookies: HashMap<String, String>,
-}
 
 impl ValidationService {
     /// 创建新的验证服务
@@ -64,6 +56,13 @@ impl ValidationService {
         &self,
         input_json: &str,
     ) -> Result<std::process::Output, ValidationError> {
+        tracing::debug!(
+            node命令 = "node",
+            脚本路径 = %self.playwright_script_path,
+            输入JSON = %input_json,
+            "执行Playwright脚本"
+        );
+
         let output = Command::new("node")
             .arg(&self.playwright_script_path)
             .arg(input_json)
@@ -79,13 +78,20 @@ impl ValidationService {
             })?;
 
         if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             tracing::error!(
                 退出码 = ?output.status.code(),
+                标准输出 = %stdout,
                 错误输出 = %stderr,
                 "Playwright脚本执行出错"
             );
-            return Err(ValidationError::PlaywrightFailed(stderr.to_string()));
+            return Err(ValidationError::PlaywrightFailed(format!(
+                "Script failed with exit code {:?}. stdout: {}. stderr: {}",
+                output.status.code(),
+                stdout,
+                stderr
+            )));
         }
 
         Ok(output)
@@ -145,18 +151,15 @@ impl ValidationService {
     /// - `ValidationError::ProfileApiFailed`: 个人资料API返回错误(cookies无效)
     ///
     /// # Playwright脚本约定
-    /// - 输入: JSON字符串作为第一个参数,格式 `{"cookies": {...}}`
+    /// - 输入: JSON字符串作为第一个参数,格式 `{"SUB": "xxx", "SUBP": "yyy"}`
     /// - 输出: JSON到stdout,格式 `{"valid": bool, "uid": string, "screen_name": string, "error": string}`
     /// - 退出码: 0表示脚本执行成功(但valid可能为false),非0表示脚本崩溃
     pub async fn validate_cookies(
         &self,
         cookies: &HashMap<String, String>,
     ) -> Result<(String, String), ValidationError> {
-        // 序列化输入
-        let input = PlaywrightInput {
-            cookies: cookies.clone(),
-        };
-        let input_json = serde_json::to_string(&input)
+        // 序列化输入：直接传递cookies键值对
+        let input_json = serde_json::to_string(cookies)
             .map_err(|e| ValidationError::PlaywrightFailed(e.to_string()))?;
 
         tracing::debug!(
