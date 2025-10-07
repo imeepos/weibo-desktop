@@ -196,3 +196,181 @@ impl CrawlStatus {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn test_new_task_creation() {
+        let keyword = "国庆".to_string();
+        let event_start_time = Utc::now() - Duration::days(7);
+
+        let task = CrawlTask::new(keyword.clone(), event_start_time);
+
+        assert_eq!(task.keyword, keyword);
+        assert_eq!(task.event_start_time, event_start_time);
+        assert_eq!(task.status, CrawlStatus::Created);
+        assert_eq!(task.crawled_count, 0);
+        assert!(task.min_post_time.is_none());
+        assert!(task.max_post_time.is_none());
+        assert!(task.failure_reason.is_none());
+        assert!(!task.id.is_empty());
+    }
+
+    #[test]
+    fn test_update_progress() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        let post_time1 = Utc::now() - Duration::hours(5);
+        task.update_progress(post_time1, 10);
+
+        assert_eq!(task.crawled_count, 10);
+        assert_eq!(task.min_post_time, Some(post_time1));
+        assert_eq!(task.max_post_time, Some(post_time1));
+
+        let post_time2 = Utc::now() - Duration::hours(3);
+        task.update_progress(post_time2, 5);
+
+        assert_eq!(task.crawled_count, 15);
+        assert_eq!(task.min_post_time, Some(post_time1));
+        assert_eq!(task.max_post_time, Some(post_time2));
+    }
+
+    #[test]
+    fn test_valid_state_transitions() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        // Created -> HistoryCrawling
+        assert!(task.transition_to(CrawlStatus::HistoryCrawling).is_ok());
+        assert_eq!(task.status, CrawlStatus::HistoryCrawling);
+
+        // HistoryCrawling -> HistoryCompleted
+        assert!(task.transition_to(CrawlStatus::HistoryCompleted).is_ok());
+        assert_eq!(task.status, CrawlStatus::HistoryCompleted);
+
+        // HistoryCompleted -> IncrementalCrawling
+        assert!(task.transition_to(CrawlStatus::IncrementalCrawling).is_ok());
+        assert_eq!(task.status, CrawlStatus::IncrementalCrawling);
+    }
+
+    #[test]
+    fn test_invalid_state_transitions() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        // Created -> HistoryCompleted (无效)
+        let result = task.transition_to(CrawlStatus::HistoryCompleted);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("无效的状态转换"));
+
+        // Created -> IncrementalCrawling (无效)
+        let result = task.transition_to(CrawlStatus::IncrementalCrawling);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pause_and_resume() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        task.transition_to(CrawlStatus::HistoryCrawling).unwrap();
+
+        // 暂停
+        assert!(task.transition_to(CrawlStatus::Paused).is_ok());
+        assert_eq!(task.status, CrawlStatus::Paused);
+
+        // 恢复
+        assert!(task.transition_to(CrawlStatus::HistoryCrawling).is_ok());
+        assert_eq!(task.status, CrawlStatus::HistoryCrawling);
+    }
+
+    #[test]
+    fn test_mark_failed() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        task.mark_failed("网络错误".to_string());
+
+        assert_eq!(task.status, CrawlStatus::Failed);
+        assert_eq!(task.failure_reason, Some("网络错误".to_string()));
+    }
+
+    #[test]
+    fn test_retry_after_failure() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        task.transition_to(CrawlStatus::HistoryCrawling).unwrap();
+        task.mark_failed("网络错误".to_string());
+
+        // 失败后可以重试
+        assert!(task.transition_to(CrawlStatus::HistoryCrawling).is_ok());
+        assert_eq!(task.status, CrawlStatus::HistoryCrawling);
+    }
+
+    #[test]
+    fn test_validate_empty_keyword() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+        assert!(task.validate().is_ok());
+
+        task.keyword = "".to_string();
+        let result = task.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "关键字不能为空");
+
+        task.keyword = "   ".to_string();
+        let result = task.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "关键字不能为空");
+    }
+
+    #[test]
+    fn test_validate_future_time() {
+        let task = CrawlTask::new("测试".to_string(), Utc::now() + Duration::days(1));
+
+        let result = task.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "事件开始时间不能是未来时间");
+    }
+
+    #[test]
+    fn test_validate_min_max_post_time() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        task.min_post_time = Some(Utc::now());
+        task.max_post_time = Some(Utc::now() - Duration::hours(1));
+
+        let result = task.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "min_post_time不能大于max_post_time");
+    }
+
+    #[test]
+    fn test_validate_failed_without_reason() {
+        let mut task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        task.status = CrawlStatus::Failed;
+        task.failure_reason = None;
+
+        let result = task.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "失败状态必须包含失败原因");
+    }
+
+    #[test]
+    fn test_redis_key() {
+        let task = CrawlTask::new("测试".to_string(), Utc::now() - Duration::days(1));
+
+        let key = task.redis_key();
+        assert!(key.starts_with("crawl:task:"));
+        assert!(key.contains(&task.id));
+    }
+
+    #[test]
+    fn test_status_as_str() {
+        assert_eq!(CrawlStatus::Created.as_str(), "Created");
+        assert_eq!(CrawlStatus::HistoryCrawling.as_str(), "HistoryCrawling");
+        assert_eq!(CrawlStatus::HistoryCompleted.as_str(), "HistoryCompleted");
+        assert_eq!(CrawlStatus::IncrementalCrawling.as_str(), "IncrementalCrawling");
+        assert_eq!(CrawlStatus::Paused.as_str(), "Paused");
+        assert_eq!(CrawlStatus::Failed.as_str(), "Failed");
+    }
+}
