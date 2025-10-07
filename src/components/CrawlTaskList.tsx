@@ -58,9 +58,9 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
         return;
       }
 
-      // 添加超时处理
+      // 添加超时处理（延长到30秒，避免误判）
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('请求超时，请检查网络连接')), 10000);
+        setTimeout(() => reject(new Error('请求超时，请检查网络连接')), 30000);
       });
 
       const requestPromise = invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
@@ -80,6 +80,7 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
       }
 
       console.log('[CrawlTaskList] 收到响应:', response);
+      console.log('[CrawlTaskList] 响应大小:', JSON.stringify(response).length, 'bytes');
       console.log('[CrawlTaskList] 任务数量:', response.tasks?.length || 0);
       console.log('[CrawlTaskList] 总数:', response.total);
 
