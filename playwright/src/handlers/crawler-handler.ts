@@ -132,19 +132,46 @@ function extractAuthorUid(user: any): string {
 }
 
 /**
+ * 带时间戳的日志输出
+ */
+function logWithTimestamp(sessionId: string, message: string, level: 'log' | 'warn' | 'error' = 'log') {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}][${sessionId}] ${message}`;
+
+  switch (level) {
+    case 'warn':
+      console.warn(logMessage);
+      break;
+    case 'error':
+      console.error(logMessage);
+      break;
+    default:
+      console.log(logMessage);
+  }
+}
+
+/**
  * 爬取微博搜索
  */
 async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
-  const browser = await ensureBrowser();
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Weibo (iPhone13,2__weibo__12.9.0__iphone__os16.0)',
-  });
-
   const sessionId = `crawl_${Date.now()}`;
+  const startTime = Date.now();
+
+  logWithTimestamp(sessionId, '---------- 创建浏览器上下文 ----------');
+
+  const browser = await ensureBrowser();
+  const userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Weibo (iPhone13,2__weibo__12.9.0__iphone__os16.0)';
+  logWithTimestamp(sessionId, `UserAgent: ${userAgent}`);
+
+  const context = await browser.newContext({ userAgent });
   activeSessions.set(sessionId, context);
 
   try {
-    console.log(`[${sessionId}] 开始爬取: keyword="${request.keyword}", page=${request.page}`);
+    logWithTimestamp(sessionId, `关键字: ${request.keyword}`);
+    logWithTimestamp(sessionId, `页码: ${request.page}`);
+    if (request.startTime || request.endTime) {
+      logWithTimestamp(sessionId, `时间范围: ${request.startTime || '无'} - ${request.endTime || '无'}`);
+    }
 
     // 设置cookies
     const cookieArray = Object.entries(request.cookies).map(([name, value]) => ({
@@ -155,15 +182,17 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
     }));
 
     await context.addCookies(cookieArray);
-    console.log(`[${sessionId}] 已设置 ${cookieArray.length} 个cookies`);
+    logWithTimestamp(sessionId, `Cookies数量: ${cookieArray.length}`);
 
     // 构建URL
     const url = buildSearchUrl(request);
-    console.log(`[${sessionId}] 请求URL: ${url}`);
+    logWithTimestamp(sessionId, `请求URL: ${url}`);
 
     const page = await context.newPage();
 
     // 导航到搜索页面
+    logWithTimestamp(sessionId, '正在加载页面...');
+    const loadStartTime = Date.now();
     const response = await page.goto(url, {
       waitUntil: 'networkidle',
       timeout: REQUEST_TIMEOUT_MS,
@@ -173,14 +202,16 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
       throw new Error('页面加载失败: 无响应');
     }
 
-    console.log(`[${sessionId}] 响应状态: ${response.status()}`);
+    const loadDuration = Date.now() - loadStartTime;
+    logWithTimestamp(sessionId, `页面加载完成, 状态码: ${response.status()}, 耗时: ${loadDuration}ms`);
 
     // 检测验证码
+    logWithTimestamp(sessionId, '检测验证码...');
     const captchaVisible = await page.locator('text=验证码').isVisible().catch(() => false);
     if (captchaVisible) {
       const screenshotPath = `captcha_${Date.now()}.png`;
       await page.screenshot({ path: screenshotPath, fullPage: true });
-      console.warn(`[${sessionId}] 检测到验证码,截图已保存: ${screenshotPath}`);
+      logWithTimestamp(sessionId, `检测到验证码, 截图已保存: ${screenshotPath}`, 'warn');
 
       return {
         posts: [],
@@ -188,12 +219,14 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
         captchaDetected: true,
       };
     }
+    logWithTimestamp(sessionId, '未检测到验证码');
 
     // 获取页面内容
     const content = await page.content();
-    console.log(`[${sessionId}] 页面内容长度: ${content.length} 字符`);
+    logWithTimestamp(sessionId, `页面内容长度: ${content.length} 字符`);
 
     // 提取JSON数据
+    logWithTimestamp(sessionId, '正在解析JSON数据...');
     let apiData: WeiboApiResponse;
 
     // 尝试从页面中提取JSON
@@ -201,9 +234,9 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
     if (preContent) {
       try {
         apiData = JSON.parse(preContent);
-        console.log(`[${sessionId}] 从<pre>标签解析JSON成功`);
+        logWithTimestamp(sessionId, '从<pre>标签解析JSON成功');
       } catch (e) {
-        console.error(`[${sessionId}] 解析<pre>内容失败:`, e);
+        logWithTimestamp(sessionId, `解析<pre>内容失败: ${e instanceof Error ? e.message : String(e)}`, 'error');
         throw new Error('JSON解析失败');
       }
     } else {
@@ -211,9 +244,9 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
       try {
         const bodyContent = await response.text();
         apiData = JSON.parse(bodyContent);
-        console.log(`[${sessionId}] 从响应body解析JSON成功`);
+        logWithTimestamp(sessionId, '从响应body解析JSON成功');
       } catch (e) {
-        console.error(`[${sessionId}] 解析响应body失败:`, e);
+        logWithTimestamp(sessionId, `解析响应body失败: ${e instanceof Error ? e.message : String(e)}`, 'error');
         throw new Error('无法获取API数据');
       }
     }
@@ -224,7 +257,7 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
     }
 
     if (!apiData.data) {
-      console.warn(`[${sessionId}] API响应中无data字段`);
+      logWithTimestamp(sessionId, 'API响应中无data字段', 'warn');
       return {
         posts: [],
         hasMore: false,
@@ -233,14 +266,17 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
     }
 
     // 提取帖子
+    logWithTimestamp(sessionId, '开始提取帖子数据...');
     const posts: WeiboPost[] = [];
     const cards = apiData.data.cards || [];
 
-    console.log(`[${sessionId}] 获取到 ${cards.length} 个cards`);
+    logWithTimestamp(sessionId, `JSON解析成功, cards数量: ${cards.length}`);
 
+    let skippedCount = 0;
     for (const card of cards) {
       // 跳过非帖子类型的card
       if (!card.mblog) {
+        skippedCount++;
         continue;
       }
 
@@ -248,7 +284,8 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
       const id = extractPostId(mblog);
 
       if (!id) {
-        console.warn(`[${sessionId}] 跳过无效帖子(缺少ID)`);
+        logWithTimestamp(sessionId, '跳过无效帖子(缺少ID)', 'warn');
+        skippedCount++;
         continue;
       }
 
@@ -266,7 +303,7 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
       posts.push(post);
     }
 
-    console.log(`[${sessionId}] 提取到 ${posts.length} 条有效帖子`);
+    logWithTimestamp(sessionId, `帖子提取完成, 有效帖子: ${posts.length}/${cards.length} (跳过: ${skippedCount})`);
 
     // 判断是否还有更多结果
     // 如果当前页返回的帖子数少于20,说明没有更多了
@@ -274,6 +311,12 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
 
     // 尝试获取总结果数
     const totalResults = apiData.data.cardlistInfo?.total;
+    if (totalResults) {
+      logWithTimestamp(sessionId, `总结果数: ${totalResults}`);
+    }
+
+    const totalDuration = Date.now() - startTime;
+    logWithTimestamp(sessionId, `爬取完成, 总耗时: ${totalDuration}ms`);
 
     return {
       posts,
@@ -283,13 +326,20 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
     };
 
   } catch (error: any) {
-    console.error(`[${sessionId}] 爬取失败:`, error);
+    const totalDuration = Date.now() - startTime;
+    logWithTimestamp(sessionId, '========== 爬取失败 ==========', 'error');
+    logWithTimestamp(sessionId, `错误类型: ${error.constructor?.name || 'Unknown'}`, 'error');
+    logWithTimestamp(sessionId, `错误消息: ${error.message || String(error)}`, 'error');
+    logWithTimestamp(sessionId, `失败耗时: ${totalDuration}ms`, 'error');
+    if (error.stack) {
+      logWithTimestamp(sessionId, `错误堆栈: ${error.stack}`, 'error');
+    }
     throw error;
   } finally {
     // 清理会话
-    await context.close().catch(e => console.error(`[${sessionId}] 关闭context失败:`, e));
+    await context.close().catch(e => logWithTimestamp(sessionId, `关闭context失败: ${e instanceof Error ? e.message : String(e)}`, 'error'));
     activeSessions.delete(sessionId);
-    console.log(`[${sessionId}] 会话已清理`);
+    logWithTimestamp(sessionId, '会话已清理');
   }
 }
 
@@ -298,6 +348,7 @@ async function crawlWeiboSearch(request: CrawlRequest): Promise<CrawlResult> {
  */
 export async function handleCrawlWeiboSearch(ws: WebSocket, payload: any): Promise<void> {
   const requestId = `req_${Date.now()}`;
+  const requestStartTime = Date.now();
 
   try {
     if (!payload) {
@@ -319,10 +370,26 @@ export async function handleCrawlWeiboSearch(ws: WebSocket, payload: any): Promi
       throw new Error('无效的cookies');
     }
 
-    console.log(`[${requestId}] 收到爬取请求: keyword="${request.keyword}", page=${request.page}`);
+    logWithTimestamp(requestId, '========== 新的爬取请求 ==========');
+    logWithTimestamp(requestId, `关键字: ${request.keyword}`);
+    logWithTimestamp(requestId, `页码: ${request.page}`);
+    if (request.startTime || request.endTime) {
+      logWithTimestamp(requestId, `时间范围: ${request.startTime || '无'} - ${request.endTime || '无'}`);
+    }
+    logWithTimestamp(requestId, `Cookies数量: ${Object.keys(request.cookies).length}`);
 
     // 执行爬取
     const result = await crawlWeiboSearch(request);
+    const requestDuration = Date.now() - requestStartTime;
+
+    logWithTimestamp(requestId, '---------- 爬取完成 ----------');
+    logWithTimestamp(requestId, `耗时: ${requestDuration}ms`);
+    logWithTimestamp(requestId, `提取帖子数: ${result.posts.length}`);
+    logWithTimestamp(requestId, `是否有更多: ${result.hasMore}`);
+    logWithTimestamp(requestId, `验证码检测: ${result.captchaDetected || false}`);
+    if (result.totalResults) {
+      logWithTimestamp(requestId, `总结果数: ${result.totalResults}`);
+    }
 
     // 返回统一成功响应
     if (ws.readyState === 1 /* WebSocket.OPEN */) {
@@ -332,11 +399,15 @@ export async function handleCrawlWeiboSearch(ws: WebSocket, payload: any): Promi
         data: result,
         timestamp: Date.now(),
       }));
-      console.log(`[${requestId}] 响应已发送: ${result.posts.length}条帖子, hasMore=${result.hasMore}`);
+      logWithTimestamp(requestId, '响应已发送到客户端');
     }
 
   } catch (error: any) {
-    console.error(`[${requestId}] 处理消息失败:`, error);
+    const requestDuration = Date.now() - requestStartTime;
+    logWithTimestamp(requestId, '========== 请求处理失败 ==========', 'error');
+    logWithTimestamp(requestId, `错误类型: ${error.constructor?.name || 'Unknown'}`, 'error');
+    logWithTimestamp(requestId, `错误消息: ${error.message || String(error)}`, 'error');
+    logWithTimestamp(requestId, `失败耗时: ${requestDuration}ms`, 'error');
 
     // 返回统一错误响应
     if (ws.readyState === 1 /* WebSocket.OPEN */) {
@@ -346,6 +417,7 @@ export async function handleCrawlWeiboSearch(ws: WebSocket, payload: any): Promi
         error: error.message || String(error),
         timestamp: Date.now(),
       }));
+      logWithTimestamp(requestId, '错误响应已发送到客户端', 'error');
     }
   }
 }

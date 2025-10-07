@@ -550,8 +550,13 @@ pub async fn pause_crawl(
     request: PauseCrawlRequest,
     state: State<'_, AppState>,
 ) -> Result<PauseCrawlResponse, CommandError> {
+    tracing::info!(
+        任务ID = %request.task_id,
+        "收到暂停爬取命令"
+    );
+
     // 1. 加载任务
-    let mut task = state
+    let task = state
         .redis
         .load_task(&request.task_id)
         .await
@@ -597,15 +602,29 @@ pub async fn pause_crawl(
                 }
             };
 
+            tracing::info!(
+                任务ID = %request.task_id,
+                检查点页码 = %checkpoint_info.current_page,
+                已爬取数量 = %checkpoint_info.crawled_count,
+                "任务已暂停"
+            );
+
             Ok(PauseCrawlResponse {
                 message: "任务已暂停,可通过start_crawl恢复".to_string(),
                 checkpoint: checkpoint_info,
             })
         }
-        _ => Err(CommandError::invalid_status(
-            task.status.as_str(),
-            "HistoryCrawling/IncrementalCrawling",
-        )),
+        _ => {
+            tracing::warn!(
+                任务ID = %request.task_id,
+                当前状态 = %task.status.as_str(),
+                "任务状态不支持暂停操作"
+            );
+            Err(CommandError::invalid_status(
+                task.status.as_str(),
+                "HistoryCrawling/IncrementalCrawling",
+            ))
+        }
     }
 }
 

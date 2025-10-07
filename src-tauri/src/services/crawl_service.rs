@@ -395,12 +395,26 @@ impl CrawlService {
     ) -> Result<(), String> {
         let start_time = std::time::Instant::now();
 
+        tracing::info!(
+            任务ID = %task_id,
+            总分片数 = %time_shards.len(),
+            "开始执行历史回溯,逐分片爬取"
+        );
+
         // 按时间倒序处理分片(从现在到过去)
-        for (shard_start, shard_end) in time_shards.iter().rev() {
+        for (i, (shard_start, shard_end)) in time_shards.iter().rev().enumerate() {
             if cancel_token.is_cancelled() {
                 tracing::info!(任务ID = %task_id, "任务已取消");
                 return Ok(());
             }
+
+            tracing::info!(
+                任务ID = %task_id,
+                当前分片 = %(i + 1),
+                总分片数 = %time_shards.len(),
+                分片时间范围 = %format!("{} - {}", shard_start, shard_end),
+                "开始爬取时间分片"
+            );
 
             // 创建检查点
             let mut checkpoint =
@@ -415,6 +429,12 @@ impl CrawlService {
                 .save_checkpoint(&checkpoint)
                 .await
                 .map_err(|e| format!("保存检查点失败: {}", e))?;
+
+            tracing::info!(
+                任务ID = %task_id,
+                分片进度 = %format!("{}/{}", i + 1, time_shards.len()),
+                "时间分片爬取完成"
+            );
         }
 
         // 所有分片完成,标记任务为HistoryCompleted
@@ -678,16 +698,44 @@ impl CrawlService {
             "开始爬取单页"
         );
 
-        // 模拟Playwright调用
+        // 调用Playwright
         let result = self.call_playwright(task_id, checkpoint, page).await?;
+
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            原始帖子数 = %result.posts.len(),
+            hasMore = %result.has_more,
+            验证码检测 = %result.captcha_detected.unwrap_or(false),
+            "Playwright响应成功"
+        );
 
         // 检查验证码
         if result.captcha_detected.unwrap_or(false) {
+            tracing::warn!(
+                任务ID = %task_id,
+                页码 = %page,
+                "检测到验证码"
+            );
             return Err("CAPTCHA_DETECTED".to_string());
         }
 
         // 处理帖子数据
+        let raw_count = result.posts.len();
         let posts = self.process_posts(task_id, result.posts).await?;
+        let valid_count = posts.len();
+        let duplicate_count = raw_count - valid_count;
+
+        if duplicate_count > 0 {
+            tracing::debug!(
+                任务ID = %task_id,
+                页码 = %page,
+                原始数量 = %raw_count,
+                有效数量 = %valid_count,
+                重复数量 = %duplicate_count,
+                "帖子去重完成"
+            );
+        }
 
         // 保存到Redis
         if !posts.is_empty() {
@@ -695,6 +743,13 @@ impl CrawlService {
                 .save_posts(task_id, &posts)
                 .await
                 .map_err(|e| format!("保存帖子失败: {}", e))?;
+
+            tracing::info!(
+                任务ID = %task_id,
+                页码 = %page,
+                保存数量 = %posts.len(),
+                "帖子保存成功"
+            );
 
             // 更新任务进度
             let mut task = self
@@ -712,6 +767,13 @@ impl CrawlService {
                 .await
                 .map_err(|e| format!("保存任务失败: {}", e))?;
 
+            tracing::info!(
+                任务ID = %task_id,
+                页码 = %page,
+                累计爬取数 = %task.crawled_count,
+                "任务进度已更新"
+            );
+
             // 推送进度事件
             let status = match checkpoint.direction {
                 CrawlDirection::Backward => CrawlStatus::HistoryCrawling,
@@ -725,6 +787,12 @@ impl CrawlService {
                 checkpoint.shard_end_time,
                 page,
                 task.crawled_count,
+            );
+        } else {
+            tracing::debug!(
+                任务ID = %task_id,
+                页码 = %page,
+                "当前页无新帖子(全部重复)"
             );
         }
 
@@ -761,6 +829,14 @@ impl CrawlService {
         let start_time = Some(format_weibo_time(checkpoint.shard_start_time));
         let end_time = Some(format_weibo_time(checkpoint.shard_end_time));
 
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            关键字 = %task.keyword,
+            时间范围 = %format!("{} - {}", start_time.as_ref().unwrap(), end_time.as_ref().unwrap()),
+            "准备Playwright请求参数"
+        );
+
         // 构建请求payload
         let request = PlaywrightCrawlRequest {
             keyword: task.keyword.clone(),
@@ -779,15 +855,28 @@ impl CrawlService {
         tracing::debug!(
             任务ID = %task_id,
             页码 = %page,
-            关键字 = %task.keyword,
-            "发送Playwright请求"
+            "开始连接Playwright WebSocket服务器"
         );
 
         // 连接到Playwright服务器 (统一使用9223端口)
         let ws_url = "ws://localhost:9223";
         let (ws_stream, _) = connect_async(ws_url)
             .await
-            .map_err(|e| format!("连接Playwright服务器失败: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    WebSocket地址 = %ws_url,
+                    错误 = %e,
+                    "连接Playwright服务器失败"
+                );
+                format!("连接Playwright服务器失败: {}", e)
+            })?;
+
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            "WebSocket连接成功"
+        );
 
         let (mut write, mut read) = ws_stream.split();
 
@@ -795,19 +884,60 @@ impl CrawlService {
         let message_text =
             serde_json::to_string(&message).map_err(|e| format!("序列化请求失败: {}", e))?;
 
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            消息大小 = %message_text.len(),
+            "发送WebSocket消息"
+        );
+
         write
             .send(Message::Text(message_text))
             .await
-            .map_err(|e| format!("发送消息失败: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    页码 = %page,
+                    错误 = %e,
+                    "发送WebSocket消息失败"
+                );
+                format!("发送消息失败: {}", e)
+            })?;
 
-        tracing::debug!(任务ID = %task_id, "请求已发送,等待响应");
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            "请求已发送,等待Playwright响应(超时30秒)"
+        );
 
         // 接收响应
         let response = tokio::time::timeout(tokio::time::Duration::from_secs(30), read.next())
             .await
-            .map_err(|_| "等待响应超时".to_string())?
-            .ok_or_else(|| "连接已关闭".to_string())?
-            .map_err(|e| format!("接收响应失败: {}", e))?;
+            .map_err(|_| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    页码 = %page,
+                    "等待Playwright响应超时(30秒)"
+                );
+                "等待响应超时".to_string()
+            })?
+            .ok_or_else(|| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    页码 = %page,
+                    "WebSocket连接已关闭"
+                );
+                "连接已关闭".to_string()
+            })?
+            .map_err(|e| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    页码 = %page,
+                    错误 = %e,
+                    "接收WebSocket响应失败"
+                );
+                format!("接收响应失败: {}", e)
+            })?;
 
         // 解析响应
         let response_text = response
@@ -816,8 +946,9 @@ impl CrawlService {
 
         tracing::debug!(
             任务ID = %task_id,
-            响应长度 = %response_text.len(),
-            "收到响应"
+            页码 = %page,
+            响应大小 = %response_text.len(),
+            "收到WebSocket响应"
         );
 
         #[derive(serde::Deserialize)]
@@ -828,18 +959,46 @@ impl CrawlService {
         }
 
         let response_data: PlaywrightResponse =
-            serde_json::from_str(response_text).map_err(|e| format!("解析响应JSON失败: {}", e))?;
+            serde_json::from_str(response_text).map_err(|e| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    页码 = %page,
+                    错误 = %e,
+                    原始响应前500字符 = %&response_text[..response_text.len().min(500)],
+                    "解析响应JSON失败"
+                );
+                format!("解析响应JSON失败: {}", e)
+            })?;
 
         if !response_data.success {
             let error = response_data
                 .error
                 .unwrap_or_else(|| "未知错误".to_string());
+            tracing::error!(
+                任务ID = %task_id,
+                页码 = %page,
+                错误信息 = %error,
+                "Playwright爬取失败"
+            );
             return Err(format!("Playwright爬取失败: {}", error));
         }
 
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            "Playwright响应解析成功"
+        );
+
         response_data
             .data
-            .ok_or_else(|| "响应中缺少data字段".to_string())
+            .ok_or_else(|| {
+                tracing::error!(
+                    任务ID = %task_id,
+                    页码 = %page,
+                    "响应success=true但缺少data字段"
+                );
+                "响应中缺少data字段".to_string()
+            })
     }
 
     /// 处理帖子数据
@@ -851,6 +1010,16 @@ impl CrawlService {
         raw_posts: Vec<WeiboPostRaw>,
     ) -> Result<Vec<WeiboPost>, String> {
         let mut posts = Vec::new();
+        let mut duplicate_count = 0;
+        let mut invalid_count = 0;
+
+        let raw_posts_count = raw_posts.len();
+
+        tracing::debug!(
+            任务ID = %task_id,
+            原始帖子数 = %raw_posts_count,
+            "开始处理帖子数据"
+        );
 
         for raw in raw_posts {
             // 检查是否已存在
@@ -860,12 +1029,30 @@ impl CrawlService {
                 .await
                 .map_err(|e| format!("检查帖子存在性失败: {}", e))?
             {
+                duplicate_count += 1;
+                tracing::debug!(
+                    任务ID = %task_id,
+                    帖子ID = %raw.id,
+                    "跳过重复帖子"
+                );
                 continue; // 去重
             }
 
             // 解析时间
-            let created_at = crate::utils::time_utils::parse_weibo_time(&raw.created_at)
-                .map_err(|e| format!("解析帖子时间失败: {}", e))?;
+            let created_at = match crate::utils::time_utils::parse_weibo_time(&raw.created_at) {
+                Ok(time) => time,
+                Err(e) => {
+                    invalid_count += 1;
+                    tracing::warn!(
+                        任务ID = %task_id,
+                        帖子ID = %raw.id,
+                        原始时间 = %raw.created_at,
+                        错误 = %e,
+                        "解析帖子时间失败,跳过"
+                    );
+                    continue;
+                }
+            };
 
             // 构建WeiboPost
             let post = WeiboPost::new(
@@ -881,11 +1068,28 @@ impl CrawlService {
             );
 
             // 验证
-            post.validate()
-                .map_err(|e| format!("帖子验证失败: {}", e))?;
+            if let Err(e) = post.validate() {
+                invalid_count += 1;
+                tracing::warn!(
+                    任务ID = %task_id,
+                    帖子ID = %post.id,
+                    错误 = %e,
+                    "帖子验证失败,跳过"
+                );
+                continue;
+            }
 
             posts.push(post);
         }
+
+        tracing::debug!(
+            任务ID = %task_id,
+            原始数量 = %raw_posts_count,
+            有效数量 = %posts.len(),
+            重复数量 = %duplicate_count,
+            无效数量 = %invalid_count,
+            "帖子处理完成"
+        );
 
         Ok(posts)
     }
