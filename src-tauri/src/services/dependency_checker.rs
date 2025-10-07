@@ -10,7 +10,7 @@ use crate::models::{dependency::*, errors::*};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tracing::{info, warn, error, debug};
 
 /// 依赖检测服务
@@ -65,7 +65,7 @@ impl DependencyChecker {
                 // 发射检测开始事件
                 debug!("开始检测依赖项: {} (第 {}/{})", dep.name, index + 1, total_count);
 
-                if let Err(e) = app_handle.emit_all("dependency-check-progress", &serde_json::json!({
+                if let Err(e) = app_handle.emit("dependency-check-progress", &serde_json::json!({
                     "dependency_id": dep.id,
                     "dependency_name": dep.name,
                     "status": "checking",
@@ -111,7 +111,7 @@ impl DependencyChecker {
                     CheckStatus::Corrupted => "corrupted",
                 };
 
-                if let Err(e) = app_handle.emit_all("dependency-check-progress", &serde_json::json!({
+                if let Err(e) = app_handle.emit("dependency-check-progress", &serde_json::json!({
                     "dependency_id": dep.id,
                     "dependency_name": dep.name,
                     "status": status_str,

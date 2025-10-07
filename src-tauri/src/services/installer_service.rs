@@ -17,7 +17,7 @@ use crate::models::{dependency::*, errors::*};
 use tokio::task::JoinSet;
 use tracing::{info, warn, error, debug};
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// 安装服务
 pub struct InstallerService {
@@ -489,7 +489,7 @@ impl InstallerService {
         Self::emit_progress_event(&app_handle, &task).await;
 
         // 发送安装完成事件
-        let _ = app_handle.emit_all("installation-completed", &task);
+        let _ = app_handle.emit("installation-completed", &task);
     }
 
     /// 分类命令执行错误
@@ -561,12 +561,12 @@ impl InstallerService {
         Self::emit_progress_event(app_handle, task).await;
 
         // 发送错误事件
-        let _ = app_handle.emit_all("installation-error", &task);
+        let _ = app_handle.emit("installation-error", &task);
     }
 
     /// 发送进度事件（每500ms发送一次）
     async fn emit_progress_event(app_handle: &tauri::AppHandle, task: &InstallationTask) {
-        let _ = app_handle.emit_all("installation-progress", task);
+        let _ = app_handle.emit("installation-progress", task);
 
         // 每500ms发送一次进度更新
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;

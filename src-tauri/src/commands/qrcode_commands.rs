@@ -4,7 +4,7 @@ use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use futures_util::StreamExt;
 
 /// 生成二维码响应
@@ -176,7 +176,7 @@ async fn monitor_login(
 
                                 // 推送confirmed事件
                                 let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
-                                let _ = app.emit_all("login_status_update", event);
+                                let _ = app.emit("login_status_update", event);
                                 tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
                             }
                             should_exit = true;
@@ -185,13 +185,13 @@ async fn monitor_login(
                         QrCodeStatus::Scanned => {
                             tracing::debug!(二维码ID = %qr_id, "处理Scanned状态");
                             let event = LoginStatusEvent::with_raw_data(qr_id.clone(), QrCodeStatus::Scanned, None, retcode, msg, data);
-                            let _ = app.emit_all("login_status_update", event);
+                            let _ = app.emit("login_status_update", event);
                             tracing::debug!(二维码ID = %qr_id, "Scanned事件已发送至前端");
                         }
                         QrCodeStatus::Rejected | QrCodeStatus::Expired => {
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理终止状态");
                             let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
-                            let _ = app.emit_all("login_status_update", event);
+                            let _ = app.emit("login_status_update", event);
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "终止状态事件已发送至前端");
                             should_exit = true;
                             break;
@@ -199,7 +199,7 @@ async fn monitor_login(
                         _ => {
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理其他状态");
                             let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
-                            let _ = app.emit_all("login_status_update", event);
+                            let _ = app.emit("login_status_update", event);
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "状态事件已发送至前端");
                         }
                     }
@@ -305,7 +305,7 @@ fn emit_connection_lost(app: &AppHandle, qr_id: &str, reason: &str) {
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
-    let _ = app.emit_all("websocket_connection_lost", event);
+    let _ = app.emit("websocket_connection_lost", event);
 }
 
 /// 发送连接恢复事件到前端
@@ -323,7 +323,7 @@ fn emit_connection_restored(app: &AppHandle, qr_id: &str) {
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
-    let _ = app.emit_all("websocket_connection_restored", event);
+    let _ = app.emit("websocket_connection_restored", event);
 }
 
 /// 清理守卫: 任务结束或被取消时自动记录日志
@@ -345,5 +345,5 @@ impl Drop for CleanupGuard {
 
 fn emit_error(app: &AppHandle, qr_id: &str, error_type: &str, message: String) {
     let error_event = LoginErrorEvent::new(qr_id.to_string(), error_type.to_string(), message);
-    let _ = app.emit_all("login_error", error_event);
+    let _ = app.emit("login_error", error_event);
 }
