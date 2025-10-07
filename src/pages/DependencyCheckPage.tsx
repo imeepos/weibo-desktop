@@ -81,7 +81,9 @@ export const DependencyCheckPage = () => {
 
   const handleManualInstall = async (dependencyId: string) => {
     try {
-      const results = await invoke<DependencyCheckResult[]>('trigger_manual_check', { dependencyId });
+      const results = await invoke<DependencyCheckResult[]>('query_dependency_status', {
+        dependency_id: dependencyId
+      });
       setCheckResults(results);
     } catch (err) {
       const errorMsg = handleTauriError(err);

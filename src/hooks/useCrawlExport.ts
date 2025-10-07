@@ -25,9 +25,11 @@ export const useCrawlExport = () => {
 
       try {
         const result = await invoke<ExportDataResponse>('export_crawl_data', {
-          taskId,
-          format,
-          timeRange,
+          request: {
+            taskId,
+            format,
+            timeRange,
+          },
         });
 
         setExportResult(result);

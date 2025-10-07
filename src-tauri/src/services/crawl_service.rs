@@ -24,10 +24,13 @@ use tokio_util::sync::CancellationToken;
 /// Playwright爬取请求
 ///
 /// 通过WebSocket发送到Playwright服务器的爬取请求
+/// 字段使用camelCase以对齐TypeScript端
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PlaywrightCrawlRequest {
     pub keyword: String,
+    #[serde(rename = "startTime")]
     pub start_time: Option<String>,
+    #[serde(rename = "endTime")]
     pub end_time: Option<String>,
     pub page: u32,
     pub cookies: HashMap<String, String>,
@@ -36,11 +39,15 @@ pub struct PlaywrightCrawlRequest {
 /// Playwright爬取结果
 ///
 /// Playwright服务器返回的爬取结果
+/// 字段使用camelCase以对齐TypeScript端
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct PlaywrightCrawlResult {
     pub posts: Vec<WeiboPostRaw>,
+    #[serde(rename = "hasMore")]
     pub has_more: bool,
+    #[serde(rename = "totalResults")]
     pub total_results: Option<usize>,
+    #[serde(rename = "captchaDetected")]
     pub captcha_detected: Option<bool>,
 }
 
@@ -740,8 +747,8 @@ impl CrawlService {
             "发送Playwright请求"
         );
 
-        // 连接到Playwright服务器
-        let ws_url = "ws://127.0.0.1:9224";
+        // 连接到Playwright服务器 (统一使用9223端口)
+        let ws_url = "ws://localhost:9223";
         let (ws_stream, _) = connect_async(ws_url)
             .await
             .map_err(|e| format!("连接Playwright服务器失败: {}", e))?;

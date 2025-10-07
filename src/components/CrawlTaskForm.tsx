@@ -39,7 +39,7 @@ export const CrawlTaskForm = ({ onTaskCreated }: CrawlTaskFormProps) => {
     setError(null);
 
     try {
-      const uids = await invoke<string[]>('query_cookies');
+      const uids = await invoke<string[]>('list_all_uids');
       setAvailableUids(uids);
 
       if (uids.length === 0) {
@@ -94,9 +94,11 @@ export const CrawlTaskForm = ({ onTaskCreated }: CrawlTaskFormProps) => {
 
     try {
       const response = await invoke<CreateCrawlTaskResponse>('create_crawl_task', {
-        keyword: formData.keyword.trim(),
-        eventStartTime: new Date(formData.eventStartTime).toISOString(),
-        uid: formData.uid,
+        request: {
+          keyword: formData.keyword.trim(),
+          eventStartTime: new Date(formData.eventStartTime).toISOString(),
+          uid: formData.uid,
+        },
       });
 
       setFormData({

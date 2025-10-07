@@ -48,11 +48,11 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const taskData = await invoke<CrawlTask>('get_crawl_task', { taskId });
+        const taskData = await invoke<CrawlTask>('get_crawl_task', { request: { taskId } });
         setTask(taskData);
 
         try {
-          const checkpointData = await invoke<CrawlCheckpoint>('get_crawl_checkpoint', { taskId });
+          const checkpointData = await invoke<CrawlCheckpoint>('get_crawl_checkpoint', { request: { taskId } });
           setCheckpoint(checkpointData);
         } catch {
           // 检查点可能不存在
@@ -130,7 +130,7 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   const handlePause = async () => {
     setIsPausing(true);
     try {
-      await invoke('pause_crawl', { taskId });
+      await invoke('pause_crawl', { request: { taskId } });
       setProgress(prev => ({ ...prev, status: 'Paused' }));
     } catch (err) {
       const error = handleTauriError(err);
@@ -144,7 +144,7 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   const handleResume = async () => {
     setIsResuming(true);
     try {
-      await invoke('start_crawl', { taskId });
+      await invoke('start_crawl', { request: { taskId } });
       setProgress(prev => ({ ...prev, status: 'HistoryCrawling' }));
     } catch (err) {
       const error = handleTauriError(err);
@@ -158,7 +158,7 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   const handleCancel = async () => {
     setIsCancelling(true);
     try {
-      await invoke('cancel_crawl', { taskId });
+      await invoke('cancel_crawl', { request: { taskId } });
       setProgress(prev => ({ ...prev, status: 'Paused' }));
     } catch (err) {
       const error = handleTauriError(err);

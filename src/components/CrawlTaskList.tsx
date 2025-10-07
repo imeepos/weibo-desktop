@@ -46,8 +46,8 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
       const response = await invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
         request: {
           status,
-          sort_by: 'updated_at',
-          sort_order: 'desc',
+          sortBy: 'updatedAt',
+          sortOrder: 'desc',
         },
       });
 
@@ -155,8 +155,8 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
         <div className="grid gap-4">
           {filteredTasks.map(task => (
             <div
-              key={task.id}
-              onClick={() => onTaskSelect(task.id)}
+              key={task.taskId}
+              onClick={() => onTaskSelect(task.taskId)}
               className="bg-white border border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
             >
               <div className="flex items-start justify-between mb-3">

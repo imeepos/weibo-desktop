@@ -71,9 +71,13 @@ fn main() {
             commands::crawl_commands::create_crawl_task,
             commands::crawl_commands::start_crawl,
             commands::crawl_commands::pause_crawl,
+            commands::crawl_commands::cancel_crawl,
+            commands::crawl_commands::get_crawl_task,
+            commands::crawl_commands::get_crawl_checkpoint,
             commands::crawl_commands::get_crawl_progress,
             commands::crawl_commands::export_crawl_data,
             commands::crawl_commands::list_crawl_tasks,
+            commands::system_commands::open_file_location,
         ])
         .setup(move |_app| {
             // 浏览器后端选择

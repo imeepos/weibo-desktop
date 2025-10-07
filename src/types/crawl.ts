@@ -28,7 +28,7 @@ export type CrawlDirection =
  */
 export interface CrawlTask {
   /** 任务ID (UUID v4) */
-  id: string;
+  taskId: string;
 
   /** 搜索关键字 */
   keyword: string;
@@ -190,7 +190,7 @@ export interface CrawlErrorEvent {
  */
 export interface CrawlTaskSummary {
   /** 任务ID */
-  id: string;
+  taskId: string;
 
   /** 搜索关键字 */
   keyword: string;

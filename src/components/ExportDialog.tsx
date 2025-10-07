@@ -37,9 +37,11 @@ export const ExportDialog = ({ taskId, keyword, onClose }: ExportDialogProps) =>
           : undefined;
 
       const result = await invoke<ExportDataResponse>('export_crawl_data', {
-        taskId,
-        format,
-        timeRange,
+        request: {
+          taskId,
+          format,
+          timeRange,
+        },
       });
 
       setExportResult(result);

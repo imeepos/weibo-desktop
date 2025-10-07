@@ -14,3 +14,4 @@ pub mod log_commands;
 pub mod playwright_commands;
 pub mod qrcode_commands;
 pub mod redis_commands;
+pub mod system_commands;

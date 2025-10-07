@@ -17,8 +17,8 @@ interface LoadingStates {
 
 interface ListTasksParams {
   status?: string;
-  sortBy?: 'CreatedAt' | 'UpdatedAt';
-  sortOrder?: 'Asc' | 'Desc';
+  sortBy?: 'createdAt' | 'updatedAt' | 'crawledCount';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export const useCrawlTask = () => {
@@ -47,9 +47,11 @@ export const useCrawlTask = () => {
 
     try {
       const response = await invoke<CreateTaskResponse>('create_crawl_task', {
-        keyword,
-        eventStartTime,
-        uid,
+        request: {
+          keyword,
+          eventStartTime,
+          uid,
+        },
       });
       return response.taskId;
     } catch (err) {
@@ -66,7 +68,7 @@ export const useCrawlTask = () => {
     setError(null);
 
     try {
-      await invoke<void>('start_crawl', { taskId });
+      await invoke<void>('start_crawl', { request: { taskId } });
     } catch (err) {
       const errorMessage = handleTauriError(err);
       setError(errorMessage);
@@ -81,7 +83,7 @@ export const useCrawlTask = () => {
     setError(null);
 
     try {
-      await invoke<void>('pause_crawl', { taskId });
+      await invoke<void>('pause_crawl', { request: { taskId } });
     } catch (err) {
       const errorMessage = handleTauriError(err);
       setError(errorMessage);
@@ -101,8 +103,8 @@ export const useCrawlTask = () => {
       const response = await invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
         request: {
           status: params.status,
-          sort_by: params.sortBy,
-          sort_order: params.sortOrder,
+          sortBy: params.sortBy,
+          sortOrder: params.sortOrder,
         },
       });
       setTasks(response.tasks);

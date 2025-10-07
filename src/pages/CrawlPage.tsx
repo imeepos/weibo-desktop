@@ -14,35 +14,27 @@ import { handleTauriError } from '../utils/errorHandler';
 import type { CrawlTask } from '../types/crawl';
 
 export const CrawlPage = () => {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<CrawlTask | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [isLoadingTask, setIsLoadingTask] = useState(false);
 
   const { startTask } = useCrawlTask();
-  const { clearProgress } = useCrawlProgress(selectedTaskId || undefined);
+  const { clearProgress } = useCrawlProgress(selectedTask?.taskId);
   const { clearResult } = useCrawlExport();
 
   const handleTaskSelect = useCallback(async (taskId: string) => {
-    setSelectedTaskId(taskId);
-    setIsLoadingTask(true);
-
     try {
-      const task = await invoke<CrawlTask>('get_crawl_task', { taskId });
+      const task = await invoke<CrawlTask>('get_crawl_task', { request: { taskId } });
       setSelectedTask(task);
     } catch (err) {
       console.error('Failed to load task:', handleTauriError(err));
       setSelectedTask(null);
-    } finally {
-      setIsLoadingTask(false);
     }
   }, []);
 
   const handleTaskCreated = useCallback(async (taskId: string) => {
     setRefreshKey(prev => prev + 1);
     await handleTaskSelect(taskId);
-
     try {
       await startTask(taskId);
     } catch (err) {
@@ -50,27 +42,11 @@ export const CrawlPage = () => {
     }
   }, [handleTaskSelect, startTask]);
 
-  const handleProgressComplete = useCallback(() => {
+  const handleTaskStateChange = useCallback(() => {
     setRefreshKey(prev => prev + 1);
   }, []);
-
-  const handleProgressError = useCallback((error: string) => {
-    console.error('Crawl error:', error);
-    setRefreshKey(prev => prev + 1);
-  }, []);
-
-  const handleExportClick = useCallback(() => {
-    if (!selectedTask) return;
-    setShowExportDialog(true);
-  }, [selectedTask]);
-
-  const handleExportClose = useCallback(() => {
-    setShowExportDialog(false);
-    clearResult();
-  }, [clearResult]);
 
   const handleClearSelection = useCallback(() => {
-    setSelectedTaskId(null);
     setSelectedTask(null);
     clearProgress();
   }, [clearProgress]);
@@ -101,7 +77,7 @@ export const CrawlPage = () => {
           </div>
 
           <div className="space-y-6">
-            {selectedTaskId && selectedTask ? (
+            {selectedTask ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <button
@@ -111,30 +87,19 @@ export const CrawlPage = () => {
                     ← 返回列表
                   </button>
                   <button
-                    onClick={handleExportClick}
-                    className={`${BUTTON.NAVIGATION_PRIMARY}`}
+                    onClick={() => setShowExportDialog(true)}
+                    className={BUTTON.NAVIGATION_PRIMARY}
                     disabled={selectedTask.crawledCount === 0}
                   >
                     <Download className="w-4 h-4" />
                     导出数据
                   </button>
                 </div>
-
-                {isLoadingTask ? (
-                  <div className={`${THEME.CARD_BG} p-6`}>
-                    <div className="animate-pulse space-y-4">
-                      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                    </div>
-                  </div>
-                ) : (
-                  <CrawlProgress
-                    taskId={selectedTaskId}
-                    onComplete={handleProgressComplete}
-                    onError={handleProgressError}
-                  />
-                )}
+                <CrawlProgress
+                  taskId={selectedTask.taskId}
+                  onComplete={handleTaskStateChange}
+                  onError={handleTaskStateChange}
+                />
               </>
             ) : (
               <div className={`${THEME.CARD_BG} p-12`}>
@@ -150,9 +115,12 @@ export const CrawlPage = () => {
 
       {showExportDialog && selectedTask && (
         <ExportDialog
-          taskId={selectedTask.id}
+          taskId={selectedTask.taskId}
           keyword={selectedTask.keyword}
-          onClose={handleExportClose}
+          onClose={() => {
+            setShowExportDialog(false);
+            clearResult();
+          }}
         />
       )}
     </div>
