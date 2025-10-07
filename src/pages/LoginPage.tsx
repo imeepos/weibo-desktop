@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { XCircle } from 'lucide-react';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { QrcodeDisplay } from '../components/QrcodeDisplay';
 import { LoginStatus } from '../components/LoginStatus';

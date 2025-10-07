@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { CheckCircle, XCircle, AlertTriangle, Settings } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';

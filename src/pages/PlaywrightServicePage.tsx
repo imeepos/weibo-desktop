@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { XCircle, CheckCircle, AlertCircle } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';
 import { THEME, BUTTON } from '../constants/ui';
