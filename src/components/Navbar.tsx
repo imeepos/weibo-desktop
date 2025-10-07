@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Cookie, Settings, Bot, LucideIcon } from 'lucide-react';
+import { Lock, Cookie, Settings, Bot, Database, LucideIcon } from 'lucide-react';
 
 export const Navbar = () => {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ export const Navbar = () => {
     { path: '/cookies', label: 'Cookies管理', icon: Cookie },
     { path: '/dependency', label: '依赖检测', icon: Settings },
     { path: '/playwright', label: 'Playwright服务', icon: Bot },
+    { path: '/redis', label: 'Redis配置', icon: Database },
   ];
 
   const isActive = (path: string) => location.pathname === path;

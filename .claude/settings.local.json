@@ -8,7 +8,12 @@
       "WebSearch",
       "Bash(xxd:*)",
       "Bash(docker compose:*)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Bash(docker network inspect:*)",
+      "Bash(redis-cli:*)",
+      "Bash(docker exec:*)",
+      "Bash(curl:*)",
+      "Bash(ss:*)"
     ],
     "deny": [],
     "ask": []
