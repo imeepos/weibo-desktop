@@ -37,13 +37,33 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
   const [filterStatus, setFilterStatus] = useState<CrawlStatus | 'All'>('All');
   const [searchKeyword, setSearchKeyword] = useState('');
 
-  const loadTasks = async () => {
+  const loadTasks = async (abortSignal?: AbortSignal) => {
+    // 防止并发请求
+    if (isLoading) {
+      console.log('[CrawlTaskList] 已有请求在进行中，跳过重复请求');
+      return;
+    }
+
     try {
+      console.log('[CrawlTaskList] 开始加载任务列表...');
       setIsLoading(true);
       setError(null);
 
       const status = filterStatus === 'All' ? null : filterStatus;
-      const response = await invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
+      console.log('[CrawlTaskList] 发送请求:', { status, sortBy: 'updatedAt', sortOrder: 'desc' });
+
+      // 检查是否已被取消
+      if (abortSignal?.aborted) {
+        console.log('[CrawlTaskList] 请求已被取消');
+        return;
+      }
+
+      // 添加超时处理
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('请求超时，请检查网络连接')), 10000);
+      });
+
+      const requestPromise = invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
         request: {
           status,
           sortBy: 'updatedAt',
@@ -51,17 +71,112 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
         },
       });
 
-      setTasks(response.tasks);
+      const response = await Promise.race([requestPromise, timeoutPromise]) as {tasks: CrawlTaskSummary[], total: number};
+
+      // 再次检查是否已被取消
+      if (abortSignal?.aborted) {
+        console.log('[CrawlTaskList] 请求完成但已被取消，忽略结果');
+        return;
+      }
+
+      console.log('[CrawlTaskList] 收到响应:', response);
+      console.log('[CrawlTaskList] 任务数量:', response.tasks?.length || 0);
+      console.log('[CrawlTaskList] 总数:', response.total);
+
+      // 严格验证响应数据格式
+      if (!response || typeof response !== 'object') {
+        throw new Error('服务器响应格式错误：响应不是有效对象');
+      }
+
+      if (!response.tasks || !Array.isArray(response.tasks)) {
+        throw new Error('服务器响应格式错误：tasks字段不是有效数组');
+      }
+
+      if (typeof response.total !== 'number') {
+        throw new Error('服务器响应格式错误：total字段不是有效数字');
+      }
+
+      // 验证任务数据结构
+      const validTasks = response.tasks.filter(task => {
+        if (!task || typeof task !== 'object') return false;
+        if (!task.taskId || !task.keyword || !task.status) return false;
+        if (typeof task.keyword !== 'string') return false;
+        return true;
+      });
+
+      if (validTasks.length !== response.tasks.length) {
+        console.warn('[CrawlTaskList] 部分任务数据格式不正确，已过滤');
+      }
+
+      // 最后检查是否已被取消
+      if (abortSignal?.aborted) {
+        console.log('[CrawlTaskList] 数据验证完成但请求已被取消，忽略结果');
+        return;
+      }
+
+      setTasks(validTasks);
+      console.log('[CrawlTaskList] 任务列表设置成功，任务:', validTasks.map(t => ({ id: t.taskId, keyword: t.keyword, status: t.status })));
+
     } catch (err) {
-      const errorMessage = handleTauriError(err);
+      // 如果是取消操作，不显示错误
+      if (abortSignal?.aborted) {
+        console.log('[CrawlTaskList] 请求因取消而失败，忽略错误');
+        return;
+      }
+
+      console.error('[CrawlTaskList] 加载任务列表失败:', err);
+
+      let errorMessage: string;
+      if (err instanceof Error) {
+        if (err.message.includes('请求超时')) {
+          errorMessage = '请求超时，请检查网络连接后重试';
+        } else if (err.message.includes('服务器响应格式错误')) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = handleTauriError(err);
+        }
+      } else {
+        errorMessage = handleTauriError(err);
+      }
+
+      console.error('[CrawlTaskList] 处理后的错误消息:', errorMessage);
       setError(errorMessage);
+
+      // 发生错误时清空任务列表，避免显示过期数据
+      setTasks([]);
+
     } finally {
-      setIsLoading(false);
+      // 只有在请求没有被取消的情况下才设置loading为false
+      if (!abortSignal?.aborted) {
+        console.log('[CrawlTaskList] 加载完成，设置loading为false');
+        setIsLoading(false);
+      } else {
+        console.log('[CrawlTaskList] 请求被取消，保持loading状态');
+      }
     }
   };
 
   useEffect(() => {
-    loadTasks();
+    const abortController = new AbortController();
+
+    const loadTasksSafe = async () => {
+      try {
+        await loadTasks(abortController.signal);
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          console.error('[CrawlTaskList] useEffect中发生未处理的错误:', err);
+        }
+      }
+    };
+
+    loadTasksSafe();
+
+    return () => {
+      abortController.abort();
+      console.log('[CrawlTaskList] 组件卸载或依赖变化，取消进行中的请求');
+      // 确保loading状态被重置
+      setIsLoading(false);
+    };
   }, [filterStatus, refreshTrigger]);
 
   const filteredTasks = searchKeyword
@@ -137,7 +252,11 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
         </div>
 
         <button
-          onClick={loadTasks}
+          onClick={() => {
+            // 取消当前请求并开始新的请求
+            const abortController = new AbortController();
+            loadTasks(abortController.signal);
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
         >
           <RefreshCw className="w-4 h-4" />
