@@ -4,7 +4,7 @@
   "description": "Playwright scripts for Weibo login and validation",
   "scripts": {
     "build": "tsc",
-    "build:server": "tsc",
+    "service": "npm run build && node dist/weibo-service.js",
     "server": "node dist/weibo-login-server.js",
     "crawler": "node dist/weibo-crawler.js"
   },
