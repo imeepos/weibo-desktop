@@ -340,6 +340,71 @@ impl RedisService {
         Ok(())
     }
 
+    /// 保存任务关联的cookies
+    pub async fn save_task_cookies(
+        &self,
+        task_id: &str,
+        cookies: &HashMap<String, String>,
+    ) -> Result<(), StorageError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let redis_key = format!("crawl:task:{}:cookies", task_id);
+        let cookies_json = serde_json::to_string(cookies)
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+        conn.set::<_, _, ()>(&redis_key, cookies_json)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        // 设置90天TTL
+        const EXPIRE_SECONDS: i64 = 90 * 24 * 3600;
+        conn.expire::<_, ()>(&redis_key, EXPIRE_SECONDS)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        tracing::debug!(
+            任务ID = %task_id,
+            cookies数量 = %cookies.len(),
+            "任务cookies已保存"
+        );
+
+        Ok(())
+    }
+
+    /// 加载任务关联的cookies
+    pub async fn load_task_cookies(
+        &self,
+        task_id: &str,
+    ) -> Result<HashMap<String, String>, StorageError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let redis_key = format!("crawl:task:{}:cookies", task_id);
+
+        let cookies_json: String = conn
+            .get(&redis_key)
+            .await
+            .map_err(|e| StorageError::NotFound(format!("任务{}的cookies不存在: {}", task_id, e)))?;
+
+        let cookies: HashMap<String, String> = serde_json::from_str(&cookies_json)
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+        tracing::debug!(
+            任务ID = %task_id,
+            cookies数量 = %cookies.len(),
+            "任务cookies已加载"
+        );
+
+        Ok(cookies)
+    }
+
     /// 加载爬取任务
     pub async fn load_task(&self, task_id: &str) -> Result<CrawlTask, StorageError> {
         let mut conn = self

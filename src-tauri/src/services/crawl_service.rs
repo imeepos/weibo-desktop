@@ -622,31 +622,101 @@ impl CrawlService {
 
     /// 调用Playwright爬取
     ///
-    /// TODO: T027实现WebSocket通信
+    /// 通过WebSocket与Playwright服务器通信
     async fn call_playwright(
         &self,
         task_id: &str,
         checkpoint: &CrawlCheckpoint,
-        _page: u32,
+        page: u32,
     ) -> Result<PlaywrightCrawlResult, String> {
+        use tokio_tungstenite::connect_async;
+        use tokio_tungstenite::tungstenite::Message;
+        use futures_util::{SinkExt, StreamExt};
+
         // 获取任务和cookies
-        let _task = self.redis_service.load_task(task_id).await
+        let task = self.redis_service.load_task(task_id).await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
+        let cookies = self.redis_service.load_task_cookies(task_id).await
+            .map_err(|e| format!("加载任务cookies失败: {}", e))?;
+
         // 构建时间参数
-        let _start_time = Some(format_weibo_time(checkpoint.shard_start_time));
-        let _end_time = Some(format_weibo_time(checkpoint.shard_end_time));
+        let start_time = Some(format_weibo_time(checkpoint.shard_start_time));
+        let end_time = Some(format_weibo_time(checkpoint.shard_end_time));
 
-        // TODO: 通过WebSocket调用Playwright
-        // 这里返回空结果用于编译
-        tracing::warn!("Playwright通信尚未实现,返回空结果");
+        // 构建请求payload
+        let request = PlaywrightCrawlRequest {
+            keyword: task.keyword.clone(),
+            start_time,
+            end_time,
+            page,
+            cookies,
+        };
 
-        Ok(PlaywrightCrawlResult {
-            posts: vec![],
-            has_more: false,
-            total_results: Some(0),
-            captcha_detected: Some(false),
-        })
+        // 构建完整消息
+        let message = serde_json::json!({
+            "action": "crawl_weibo_search",
+            "payload": request
+        });
+
+        tracing::debug!(
+            任务ID = %task_id,
+            页码 = %page,
+            关键字 = %task.keyword,
+            "发送Playwright请求"
+        );
+
+        // 连接到Playwright服务器
+        let ws_url = "ws://127.0.0.1:9224";
+        let (ws_stream, _) = connect_async(ws_url).await
+            .map_err(|e| format!("连接Playwright服务器失败: {}", e))?;
+
+        let (mut write, mut read) = ws_stream.split();
+
+        // 发送请求
+        let message_text = serde_json::to_string(&message)
+            .map_err(|e| format!("序列化请求失败: {}", e))?;
+
+        write.send(Message::Text(message_text)).await
+            .map_err(|e| format!("发送消息失败: {}", e))?;
+
+        tracing::debug!(任务ID = %task_id, "请求已发送,等待响应");
+
+        // 接收响应
+        let response = tokio::time::timeout(
+            tokio::time::Duration::from_secs(30),
+            read.next()
+        ).await
+            .map_err(|_| "等待响应超时".to_string())?
+            .ok_or_else(|| "连接已关闭".to_string())?
+            .map_err(|e| format!("接收响应失败: {}", e))?;
+
+        // 解析响应
+        let response_text = response.to_text()
+            .map_err(|e| format!("解析响应文本失败: {}", e))?;
+
+        tracing::debug!(
+            任务ID = %task_id,
+            响应长度 = %response_text.len(),
+            "收到响应"
+        );
+
+        #[derive(serde::Deserialize)]
+        struct PlaywrightResponse {
+            success: bool,
+            data: Option<PlaywrightCrawlResult>,
+            error: Option<String>,
+        }
+
+        let response_data: PlaywrightResponse = serde_json::from_str(response_text)
+            .map_err(|e| format!("解析响应JSON失败: {}", e))?;
+
+        if !response_data.success {
+            let error = response_data.error.unwrap_or_else(|| "未知错误".to_string());
+            return Err(format!("Playwright爬取失败: {}", error));
+        }
+
+        response_data.data.ok_or_else(|| "响应中缺少data字段".to_string())
     }
 
     /// 处理帖子数据

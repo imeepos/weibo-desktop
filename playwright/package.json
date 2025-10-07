@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "build:server": "tsc",
-    "server": "node dist/weibo-login-server.js"
+    "server": "node dist/weibo-login-server.js",
+    "crawler": "node dist/weibo-crawler.js"
   },
   "dependencies": {
     "playwright": "^1.40.0",

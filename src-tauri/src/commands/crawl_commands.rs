@@ -296,7 +296,14 @@ pub async fn create_crawl_task(
         .await
         .map_err(|e| CommandError::storage_error(&format!("保存任务失败: {}", e)))?;
 
-    // 8. 返回响应
+    // 8. 保存cookies到单独的Redis键
+    state
+        .redis
+        .save_task_cookies(&task.id, &cookies_data.cookies)
+        .await
+        .map_err(|e| CommandError::storage_error(&format!("保存任务cookies失败: {}", e)))?;
+
+    // 9. 返回响应
     Ok(CreateCrawlTaskResponse {
         task_id: task.id.clone(),
         created_at: task.created_at.to_rfc3339(),
