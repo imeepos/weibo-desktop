@@ -541,18 +541,22 @@ mod tests {
     async fn test_check_file_dependency() {
         let checker = DependencyChecker::new();
 
-        // 测试存在的文件（Cargo.toml）
+        // 测试存在的文件（Cargo.toml） - 使用 CARGO_MANIFEST_DIR 确保正确的路径
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR should be set during tests");
+        let cargo_toml_path = std::path::Path::new(&manifest_dir).join("Cargo.toml");
+
         let dependency = create_test_dependency(
             "cargo-toml",
             CheckMethod::File {
-                path: "/workspace/desktop/src-tauri/Cargo.toml".to_string(),
+                path: cargo_toml_path.to_string_lossy().to_string(),
             },
         );
 
         let result = checker.check_dependency(&dependency).await.unwrap();
 
         assert_eq!(result.dependency_id, "cargo-toml");
-        assert!(result.is_satisfied());
+        assert!(result.is_satisfied(), "检查结果应该是满足的: {:?}", result);
         assert_eq!(result.status, CheckStatus::Satisfied);
     }
 
@@ -624,6 +628,11 @@ mod tests {
     async fn test_version_validation_integration() {
         let checker = DependencyChecker::new();
 
+        // 使用 CARGO_MANIFEST_DIR 获取正确的路径
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR should be set during tests");
+        let cargo_toml_path = std::path::Path::new(&manifest_dir).join("Cargo.toml");
+
         // 创建一个依赖项，要求版本 >= 1.0.0
         let dependency = Dependency::new(
             "test-version".to_string(),
@@ -634,7 +643,7 @@ mod tests {
             false,
             1,
             CheckMethod::File {
-                path: "/workspace/desktop/src-tauri/Cargo.toml".to_string(),
+                path: cargo_toml_path.to_string_lossy().to_string(),
             },
             "Test guide".to_string(),
             None,
@@ -653,13 +662,21 @@ mod tests {
         let checker = DependencyChecker::new();
         let default_checker = DependencyChecker::default();
 
+        // 使用 CARGO_MANIFEST_DIR 获取正确的路径
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR should be set during tests");
+        let cargo_toml_path = std::path::Path::new(&manifest_dir)
+            .join("Cargo.toml")
+            .to_string_lossy()
+            .to_string();
+
         // 测试创建和默认值
         assert_eq!(
             checker
                 .check_dependency(&create_test_dependency(
                     "test",
                     CheckMethod::File {
-                        path: "/workspace/desktop/src-tauri/Cargo.toml".to_string()
+                        path: cargo_toml_path.clone()
                     }
                 ))
                 .await
@@ -672,7 +689,7 @@ mod tests {
                 .check_dependency(&create_test_dependency(
                     "default",
                     CheckMethod::File {
-                        path: "/workspace/desktop/src-tauri/Cargo.toml".to_string()
+                        path: cargo_toml_path
                     }
                 ))
                 .await
