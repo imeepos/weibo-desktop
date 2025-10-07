@@ -198,6 +198,9 @@ export interface CrawlTaskSummary {
   /** 任务状态 */
   status: CrawlStatus;
 
+  /** 事件开始时间 (ISO 8601) */
+  eventStartTime: string;
+
   /** 已爬取帖子总数 */
   crawledCount: number;
 
@@ -206,6 +209,9 @@ export interface CrawlTaskSummary {
 
   /** 最后更新时间 (ISO 8601) */
   updatedAt: string;
+
+  /** 失败原因 (仅当status=Failed时有值) */
+  failureReason: string | null;
 }
 
 /**
