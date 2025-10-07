@@ -60,21 +60,27 @@ pub struct CrawlTask {
 #[serde(rename_all = "snake_case")]
 pub enum CrawlStatus {
     /// 已创建,未开始
+    #[serde(alias = "Created")]
     Created,
 
     /// 历史回溯中 (从现在到event_start_time)
+    #[serde(alias = "HistoryCrawling")]
     HistoryCrawling,
 
     /// 历史回溯完成
+    #[serde(alias = "HistoryCompleted")]
     HistoryCompleted,
 
     /// 增量更新中 (从max_post_time到现在)
+    #[serde(alias = "IncrementalCrawling")]
     IncrementalCrawling,
 
     /// 已暂停 (用户主动暂停或检测到验证码)
+    #[serde(alias = "Paused")]
     Paused,
 
     /// 失败 (网络错误/Redis错误等)
+    #[serde(alias = "Failed")]
     Failed,
 }
 
