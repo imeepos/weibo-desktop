@@ -1,4 +1,5 @@
 import { CommandError, ErrorCode, CrawlErrorCode, LoginErrorCode } from '../types/error';
+import { isCommandError, parseCommandError } from './typeGuards';
 
 interface TauriError {
   message?: string;
@@ -54,19 +55,6 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [LoginErrorCode.InvalidCredentials]: '凭证无效,请重新登录',
 };
 
-/**
- * 检查错误是否为CommandError结构
- */
-function isCommandError(error: unknown): error is CommandError {
-  return (
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    'error' in error &&
-    typeof (error as CommandError).code === 'string' &&
-    typeof (error as CommandError).error === 'string'
-  );
-}
 
 /**
  * 检查错误是否为TauriError结构
@@ -83,9 +71,10 @@ function isTauriError(error: unknown): error is TauriError {
  * 格式化Tauri错误为标准错误消息
  */
 export function formatTauriError(error: unknown): string {
-  // 1. 优先处理CommandError结构（后端标准错误）
-  if (isCommandError(error)) {
-    return JSON.stringify(error);
+  // 1. 尝试解析CommandError（后端标准错误）
+  const commandError = parseCommandError(error);
+  if (commandError) {
+    return JSON.stringify(commandError);
   }
 
   // 2. 处理传统TauriError结构
@@ -102,15 +91,6 @@ export function formatTauriError(error: unknown): string {
 
   // 3. 处理字符串错误
   if (typeof error === 'string') {
-    // 尝试解析是否为JSON格式的CommandError
-    try {
-      const parsed = JSON.parse(error);
-      if (isCommandError(parsed)) {
-        return error; // 保持原始JSON格式
-      }
-    } catch {
-      // 不是JSON格式，直接返回字符串
-    }
     return error;
   }
 
@@ -123,13 +103,9 @@ export function formatTauriError(error: unknown): string {
  */
 export function getFriendlyErrorMessage(error: string): string {
   // 1. 尝试解析CommandError JSON
-  try {
-    const parsed = JSON.parse(error);
-    if (isCommandError(parsed)) {
-      return ERROR_MESSAGES[parsed.code as ErrorCode] || parsed.error;
-    }
-  } catch {
-    // 不是JSON格式，继续下一步
+  const commandError = parseCommandError(error);
+  if (commandError) {
+    return ERROR_MESSAGES[commandError.code as ErrorCode] || commandError.error;
   }
 
   // 2. 使用传统的错误代码匹配
@@ -155,9 +131,10 @@ export function handleTauriError(error: unknown): string {
  * 用于需要根据错误代码进行特殊处理的场景
  */
 export function extractErrorCode(error: unknown): string | null {
-  // 1. 处理CommandError结构
-  if (isCommandError(error)) {
-    return error.code;
+  // 1. 尝试解析CommandError
+  const commandError = parseCommandError(error);
+  if (commandError) {
+    return commandError.code;
   }
 
   // 2. 处理TauriError的payload
@@ -167,15 +144,6 @@ export function extractErrorCode(error: unknown): string | null {
 
   // 3. 处理JSON字符串
   if (typeof error === 'string') {
-    try {
-      const parsed = JSON.parse(error);
-      if (isCommandError(parsed)) {
-        return parsed.code;
-      }
-    } catch {
-      // 继续下一步
-    }
-
     // 4. 字符串中是否包含错误代码
     for (const code of Object.values(CrawlErrorCode)) {
       if (error.includes(code)) return code;

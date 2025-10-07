@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Search, Filter, RefreshCw } from 'lucide-react';
 import { CrawlTaskSummary, CrawlStatus } from '../types/crawl';
+import { handleTauriError } from '../utils/errorHandler';
+import ErrorDisplay from './ErrorDisplay';
 import { EmptyState } from './EmptyState';
 
 interface CrawlTaskListProps {
@@ -49,7 +51,8 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
 
       setTasks(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载任务列表失败');
+      const errorMessage = handleTauriError(err);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -93,16 +96,12 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-        <p className="font-medium">加载失败</p>
-        <p className="text-sm mt-1">{error}</p>
-        <button
-          onClick={loadTasks}
-          className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-        >
-          重试
-        </button>
-      </div>
+      <ErrorDisplay
+        error={error}
+        onRetry={loadTasks}
+        showRetryButton={true}
+        className="m-4"
+      />
     );
   }
 

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 /// - crawled_count: 累计爬取数,展示总体进度
 /// - timestamp: 事件时间,用于前端排序和去重
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrawlProgressEvent {
     pub task_id: String,
     pub status: CrawlStatus,
@@ -60,6 +61,7 @@ impl CrawlProgressEvent {
 /// - duration: 耗时秒数,性能监控指标
 /// - timestamp: 事件时间
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrawlCompletedEvent {
     pub task_id: String,
     pub final_status: CrawlStatus,
@@ -96,6 +98,7 @@ impl CrawlCompletedEvent {
 /// - error_code: 错误类型,用于程序化处理
 /// - timestamp: 事件时间
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrawlErrorEvent {
     pub task_id: String,
     pub error: String,
@@ -119,6 +122,7 @@ impl CrawlErrorEvent {
 ///
 /// ISO 8601格式的时间区间,表示当前正在爬取的时间分片
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TimeRange {
     /// 开始时间 (ISO 8601)
     pub start: DateTime<Utc>,

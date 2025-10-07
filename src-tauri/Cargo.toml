@@ -124,3 +124,12 @@ path = "tests/unit/test_weibo_post_validation.rs"
 [[test]]
 name = "unit_crawl_task_model"
 path = "tests/unit/test_crawl_task_model.rs"
+
+# 性能测试
+[[test]]
+name = "perf_redis_performance"
+path = "tests/performance/test_redis_performance.rs"
+
+[[test]]
+name = "perf_redis_connection"
+path = "tests/performance/test_redis_connection.rs"

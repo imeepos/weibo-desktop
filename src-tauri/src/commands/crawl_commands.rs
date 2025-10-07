@@ -18,6 +18,7 @@ use tauri::State;
 
 /// 命令执行错误
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandError {
     pub error: String,
     pub code: String,

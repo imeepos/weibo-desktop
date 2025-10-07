@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { CrawlProgressEvent, CrawlCompletedEvent, CrawlErrorEvent } from '../types/crawl';
+import { isCrawlProgressEvent, isCrawlCompletedEvent, isCrawlErrorEvent } from '../utils/typeGuards';
 
 interface UseCrawlProgressReturn {
   progress: CrawlProgressEvent | null;
@@ -30,21 +31,21 @@ export const useCrawlProgress = (taskId?: string): UseCrawlProgressReturn => {
     const unlistenFns: UnlistenFn[] = [];
 
     const setupListeners = async () => {
-      const progressUnlisten = await listen<CrawlProgressEvent>('crawl-progress', (event) => {
-        if (!taskId || event.payload.taskId === taskId) {
+      const progressUnlisten = await listen('crawl-progress', (event) => {
+        if (isCrawlProgressEvent(event.payload) && (!taskId || event.payload.taskId === taskId)) {
           setProgress(event.payload);
         }
       });
 
-      const completedUnlisten = await listen<CrawlCompletedEvent>('crawl-completed', (event) => {
-        if (!taskId || event.payload.taskId === taskId) {
+      const completedUnlisten = await listen('crawl-completed', (event) => {
+        if (isCrawlCompletedEvent(event.payload) && (!taskId || event.payload.taskId === taskId)) {
           setCompleted(event.payload);
           setProgress(null);
         }
       });
 
-      const errorUnlisten = await listen<CrawlErrorEvent>('crawl-error', (event) => {
-        if (!taskId || event.payload.taskId === taskId) {
+      const errorUnlisten = await listen('crawl-error', (event) => {
+        if (isCrawlErrorEvent(event.payload) && (!taskId || event.payload.taskId === taskId)) {
           setError(event.payload);
           setProgress(null);
         }

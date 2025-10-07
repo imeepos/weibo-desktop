@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { XCircle, CheckCircle, Loader2, Download, FolderOpen } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';
+import ErrorDisplay from './ErrorDisplay';
 import { BUTTON } from '../constants/ui';
 import type { ExportDataResponse } from '../types/crawl';
 
@@ -88,23 +89,13 @@ export const ExportDialog = ({ taskId, keyword, onClose }: ExportDialogProps) =>
         </div>
 
         <div className="p-6 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-semibold text-red-900 mb-1">导出失败</p>
-                  <p className="text-red-700 text-sm whitespace-pre-line">{error}</p>
-                </div>
-                <button
-                  onClick={() => setError(null)}
-                  className="text-red-600 hover:text-red-800 text-2xl leading-none"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          )}
+          <ErrorDisplay
+            error={error}
+            onDismiss={() => setError(null)}
+            showRetryButton={true}
+            onRetry={() => handleExport()}
+            showDismissButton={true}
+          />
 
           {exportResult && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
