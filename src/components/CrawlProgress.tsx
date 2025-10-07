@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { Pause, Play, XCircle, Clock, FileText, TrendingUp, ChevronRight } from 'lucide-react';
+import { Pause, Play, XCircle, Clock, FileText, TrendingUp, ChevronRight, AlertCircle } from 'lucide-react';
 import {
   CrawlProgressEvent,
   CrawlCompletedEvent,
@@ -19,7 +19,8 @@ interface CrawlProgressProps {
 }
 
 interface ProgressState {
-  status: 'HistoryCrawling' | 'IncrementalCrawling' | 'Paused' | 'Completed' | 'Error';
+  status: 'Preparing' | 'HistoryCrawling' | 'IncrementalCrawling' | 'Paused' | 'Completed' | 'Error';
+  preparingMessage?: string;
   currentTimeRange: {
     start: string;
     end: string;
@@ -34,9 +35,10 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   const [task, setTask] = useState<CrawlTask | null>(null);
   const [checkpoint, setCheckpoint] = useState<CrawlCheckpoint | null>(null);
   const [progress, setProgress] = useState<ProgressState>({
-    status: 'HistoryCrawling',
+    status: 'Preparing',
+    preparingMessage: '正在初始化任务...',
     currentTimeRange: null,
-    currentPage: 1,
+    currentPage: 0,
     crawledCount: 0,
     progressPercentage: 0,
     errorMessage: null,
@@ -44,6 +46,8 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   const [isPausing, setIsPausing] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -68,8 +72,24 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
   }, [taskId, onError]);
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      if (progress.status === 'HistoryCrawling' || progress.status === 'IncrementalCrawling') {
+        const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+        if (timeSinceLastUpdate > 30000) {
+          setShowTimeoutWarning(true);
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [progress.status, lastUpdateTime]);
+
+  useEffect(() => {
     const unlistenProgress = listen<CrawlProgressEvent>('crawl-progress', (event) => {
       if (event.payload.taskId !== taskId) return;
+
+      setLastUpdateTime(Date.now());
+      setShowTimeoutWarning(false);
 
       setProgress(prev => ({
         ...prev,
@@ -182,6 +202,8 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
 
   const getStatusColor = (): string => {
     switch (progress.status) {
+      case 'Preparing':
+        return 'text-purple-700 bg-purple-50';
       case 'HistoryCrawling':
       case 'IncrementalCrawling':
         return 'text-blue-700 bg-blue-50';
@@ -198,6 +220,8 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
 
   const getStatusText = (): string => {
     switch (progress.status) {
+      case 'Preparing':
+        return '准备中';
       case 'HistoryCrawling':
         return '历史回溯中';
       case 'IncrementalCrawling':
@@ -236,6 +260,37 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
         </div>
       </div>
 
+      {progress.status === 'Preparing' && progress.preparingMessage && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <Clock className="w-5 h-5 text-purple-600 animate-spin" />
+            <div>
+              <p className="font-semibold text-purple-900">任务准备中</p>
+              <p className="text-purple-700 text-sm mt-1">{progress.preparingMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTimeoutWarning && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-yellow-900">进度更新较慢</p>
+              <p className="text-yellow-700 text-sm">
+                爬取任务仍在运行，但30秒内未收到更新。这可能是因为：
+              </p>
+              <ul className="list-disc ml-5 mt-1 text-yellow-700 text-sm">
+                <li>时间分片计算耗时较长</li>
+                <li>网络请求响应较慢</li>
+                <li>当前页面帖子较少</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {progress.errorMessage && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
@@ -249,6 +304,17 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
       )}
 
       <div className="space-y-4">
+        {(progress.status === 'Preparing' || (progress.status === 'HistoryCrawling' && progress.currentPage === 0)) && (
+          <div className="flex items-center gap-2 text-purple-700 mb-4">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+            <span className="text-sm">正在准备爬取任务...</span>
+          </div>
+        )}
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">进度</span>
@@ -271,7 +337,7 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
               <p className="text-sm text-gray-600">当前页码</p>
             </div>
             <p className="text-2xl font-semibold text-gray-900">
-              {progress.currentPage}
+              {progress.currentPage === 0 ? '—' : progress.currentPage}
             </p>
           </div>
 
@@ -281,7 +347,9 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
               <p className="text-sm text-gray-600">已爬取数量</p>
             </div>
             <p className="text-2xl font-semibold text-gray-900">
-              {progress.crawledCount.toLocaleString()}
+              {progress.crawledCount === 0 && progress.status === 'HistoryCrawling'
+                ? '准备中...'
+                : progress.crawledCount.toLocaleString()}
             </p>
           </div>
         </div>
@@ -345,8 +413,7 @@ export const CrawlProgress = ({ taskId, onComplete, onError }: CrawlProgressProp
             onClick={handlePause}
             disabled={
               isPausing ||
-              progress.status === 'Completed' ||
-              progress.status === 'Error'
+              !(progress.status === 'HistoryCrawling' || progress.status === 'IncrementalCrawling')
             }
             className={`flex-1 ${BUTTON.WARNING} flex items-center justify-center gap-2 ${
               isPausing || progress.status === 'Completed' || progress.status === 'Error'
