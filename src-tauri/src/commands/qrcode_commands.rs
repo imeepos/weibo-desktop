@@ -91,23 +91,35 @@ pub async fn generate_qrcode(
 ///
 /// 监听WebSocket消息流,处理状态变化并推送Event到前端
 /// 支持任务取消 - 当SessionManager取消旧会话时,此任务会自动终止
+/// 支持断线重连 - WebSocket断开时自动重连,最多重试5次
 ///
 /// 注: WebSocket服务已通过VIP API验证UID,无需二次验证
 async fn monitor_login(
     qr_id: String,
-    ws_stream: crate::services::weibo_api::WsStream,
+    mut ws_stream: crate::services::weibo_api::WsStream,
     app: AppHandle,
     redis: Arc<crate::services::RedisService>,
 ) {
     use crate::services::weibo_api::WsEvent;
     use tokio_tungstenite::tungstenite::Message;
+    use tokio::time::{sleep, Duration};
 
     tracing::info!(二维码ID = %qr_id, "登录监控已启动");
 
     // 监控任务被取消时的清理逻辑
     let cleanup_guard = CleanupGuard::new(qr_id.clone());
 
-    let stream = ws_stream.filter_map(|msg_result| async move {
+    const MAX_RECONNECT_ATTEMPTS: u32 = 5;
+    let mut reconnect_count = 0;
+    let mut should_exit = false;
+
+    // 主监控循环 - 支持断线重连
+    'monitor_loop: loop {
+        if should_exit {
+            break;
+        }
+
+        let stream = ws_stream.filter_map(|msg_result| async move {
         match msg_result {
             Ok(Message::Text(text)) => {
                 match serde_json::from_str::<WsEvent>(&text) {
@@ -131,74 +143,185 @@ async fn monitor_login(
         }
     });
 
-    tokio::pin!(stream);
+        tokio::pin!(stream);
 
-    tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已就绪,开始等待消息");
+        tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已就绪,开始等待消息");
 
-    while let Some(result) = stream.next().await {
-        tracing::debug!(二维码ID = %qr_id, "收到WebSocket消息: {:?}", result);
+        while let Some(result) = stream.next().await {
+            tracing::debug!(二维码ID = %qr_id, "收到WebSocket消息: {:?}", result);
 
-        match result {
-            Ok((status, uid_opt, cookies_opt, screen_name_opt, retcode, msg, data)) => {
-                tracing::info!(二维码ID = %qr_id, 状态 = ?status, retcode = ?retcode, msg = ?msg, "状态更新");
+            match result {
+                Ok((status, uid_opt, cookies_opt, screen_name_opt, retcode, msg, data)) => {
+                    tracing::info!(二维码ID = %qr_id, 状态 = ?status, retcode = ?retcode, msg = ?msg, "状态更新");
 
-                match status {
-                    QrCodeStatus::Confirmed => {
-                        tracing::debug!(二维码ID = %qr_id, "处理Confirmed状态");
-                        if let (Some(uid), Some(cookies), Some(screen_name)) = (uid_opt, cookies_opt, screen_name_opt) {
-                            // WebSocket已经通过VIP API验证,直接使用返回的UID
-                            // 不需要二次验证 - VIP API是唯一可信的数据源
-                            let cookies_data = CookiesData::new(uid.clone(), cookies)
-                                .with_screen_name(screen_name);
+                    match status {
+                        QrCodeStatus::Confirmed => {
+                            tracing::debug!(二维码ID = %qr_id, "处理Confirmed状态");
+                            if let (Some(uid), Some(cookies), Some(screen_name)) = (uid_opt, cookies_opt, screen_name_opt) {
+                                // WebSocket已经通过VIP API验证,直接使用返回的UID
+                                // 不需要二次验证 - VIP API是唯一可信的数据源
+                                let cookies_data = CookiesData::new(uid.clone(), cookies)
+                                    .with_screen_name(screen_name);
 
-                            if let Err(e) = redis.save_cookies(&cookies_data).await {
-                                tracing::error!(二维码ID = %qr_id, 错误 = ?e, "保存cookies失败");
-                                emit_error(&app, &qr_id, "StorageError", format!("保存Cookies失败: {}", e));
-                                break;
+                                if let Err(e) = redis.save_cookies(&cookies_data).await {
+                                    tracing::error!(二维码ID = %qr_id, 错误 = ?e, "保存cookies失败");
+                                    emit_error(&app, &qr_id, "StorageError", format!("保存Cookies失败: {}", e));
+                                    should_exit = true;
+                                    break;
+                                }
+
+                                tracing::info!(二维码ID = %qr_id, uid = %uid, "Cookies已保存");
+
+                                // 推送confirmed事件
+                                let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
+                                let _ = app.emit_all("login_status_update", event);
+                                tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
                             }
-
-                            tracing::info!(二维码ID = %qr_id, uid = %uid, "Cookies已保存");
-
-                            // 推送confirmed事件
-                            let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
-                            let _ = app.emit_all("login_status_update", event);
-                            tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
+                            should_exit = true;
+                            break;
                         }
-                        break;
-                    }
-                    QrCodeStatus::Scanned => {
-                        tracing::debug!(二维码ID = %qr_id, "处理Scanned状态");
-                        let event = LoginStatusEvent::with_raw_data(qr_id.clone(), QrCodeStatus::Scanned, None, retcode, msg, data);
-                        let _ = app.emit_all("login_status_update", event);
-                        tracing::debug!(二维码ID = %qr_id, "Scanned事件已发送至前端");
-                    }
-                    QrCodeStatus::Rejected | QrCodeStatus::Expired => {
-                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理终止状态");
-                        let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
-                        let _ = app.emit_all("login_status_update", event);
-                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "终止状态事件已发送至前端");
-                        break;
-                    }
-                    _ => {
-                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理其他状态");
-                        let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
-                        let _ = app.emit_all("login_status_update", event);
-                        tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "状态事件已发送至前端");
+                        QrCodeStatus::Scanned => {
+                            tracing::debug!(二维码ID = %qr_id, "处理Scanned状态");
+                            let event = LoginStatusEvent::with_raw_data(qr_id.clone(), QrCodeStatus::Scanned, None, retcode, msg, data);
+                            let _ = app.emit_all("login_status_update", event);
+                            tracing::debug!(二维码ID = %qr_id, "Scanned事件已发送至前端");
+                        }
+                        QrCodeStatus::Rejected | QrCodeStatus::Expired => {
+                            tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理终止状态");
+                            let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
+                            let _ = app.emit_all("login_status_update", event);
+                            tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "终止状态事件已发送至前端");
+                            should_exit = true;
+                            break;
+                        }
+                        _ => {
+                            tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理其他状态");
+                            let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
+                            let _ = app.emit_all("login_status_update", event);
+                            tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "状态事件已发送至前端");
+                        }
                     }
                 }
+                Err(e) => {
+                    tracing::error!(二维码ID = %qr_id, 错误 = ?e, 流状态 = "active", "WebSocket错误");
+                    emit_error(&app, &qr_id, "WebSocketError", format!("{:?}", e));
+                    should_exit = true;
+                    break;
+                }
+            }
+        }
+
+        tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已关闭");
+
+        // 检查是否需要重连
+        if should_exit {
+            tracing::info!(二维码ID = %qr_id, "监控任务正常结束,退出");
+            break 'monitor_loop;
+        }
+
+        // 尝试重连
+        reconnect_count += 1;
+        if reconnect_count > MAX_RECONNECT_ATTEMPTS {
+            tracing::error!(
+                二维码ID = %qr_id,
+                重连次数 = reconnect_count - 1,
+                "WebSocket重连失败,已达最大重试次数"
+            );
+            emit_connection_lost(&app, &qr_id, "max_retries_exceeded");
+            break 'monitor_loop;
+        }
+
+        tracing::warn!(
+            二维码ID = %qr_id,
+            当前尝试 = reconnect_count,
+            最大次数 = MAX_RECONNECT_ATTEMPTS,
+            "WebSocket连接断开,尝试重连"
+        );
+
+        emit_connection_lost(&app, &qr_id, "reconnecting");
+
+        // 指数退避: 2秒 * 2^(尝试次数-1)
+        let delay_secs = 2u64.pow(reconnect_count - 1).min(30);
+        sleep(Duration::from_secs(delay_secs)).await;
+
+        // 尝试重新连接
+        match reconnect_websocket().await {
+            Ok(new_stream) => {
+                tracing::info!(
+                    二维码ID = %qr_id,
+                    尝试次数 = reconnect_count,
+                    "WebSocket重连成功"
+                );
+                ws_stream = new_stream;
+                emit_connection_restored(&app, &qr_id);
+                // 继续监控循环
             }
             Err(e) => {
-                tracing::error!(二维码ID = %qr_id, 错误 = ?e, 流状态 = "active", "WebSocket错误");
-                emit_error(&app, &qr_id, "WebSocketError", format!("{:?}", e));
-                break;
+                tracing::error!(
+                    二维码ID = %qr_id,
+                    错误 = ?e,
+                    尝试次数 = reconnect_count,
+                    "WebSocket重连失败"
+                );
+                // 继续下一次重试
             }
         }
     }
 
-    tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已关闭,退出监控循环");
-
     drop(cleanup_guard); // 显式清理
     tracing::info!(二维码ID = %qr_id, "登录监控已停止");
+}
+
+/// 重新连接 WebSocket
+///
+/// 使用与 `generate_qrcode` 相同的连接逻辑
+async fn reconnect_websocket() -> Result<crate::services::weibo_api::WsStream, ApiError> {
+    use tokio_tungstenite::connect_async;
+
+    let ws_url = "ws://localhost:9223";
+    let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| {
+        ApiError::NetworkFailed(format!("WebSocket重连失败: {}", e))
+    })?;
+
+    Ok(ws_stream)
+}
+
+/// 发送连接断开事件到前端
+fn emit_connection_lost(app: &AppHandle, qr_id: &str, reason: &str) {
+    use serde::{Serialize};
+
+    #[derive(Serialize)]
+    struct ConnectionEvent {
+        qr_id: String,
+        reason: String,
+        timestamp: String,
+    }
+
+    let event = ConnectionEvent {
+        qr_id: qr_id.to_string(),
+        reason: reason.to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let _ = app.emit_all("websocket_connection_lost", event);
+}
+
+/// 发送连接恢复事件到前端
+fn emit_connection_restored(app: &AppHandle, qr_id: &str) {
+    use serde::{Serialize};
+
+    #[derive(Serialize)]
+    struct ConnectionEvent {
+        qr_id: String,
+        timestamp: String,
+    }
+
+    let event = ConnectionEvent {
+        qr_id: qr_id.to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let _ = app.emit_all("websocket_connection_restored", event);
 }
 
 /// 清理守卫: 任务结束或被取消时自动记录日志

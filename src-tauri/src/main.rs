@@ -7,6 +7,7 @@ mod services;
 mod state;
 mod utils;
 
+use services::ConfigService;
 use state::AppState;
 
 fn main() {
@@ -15,9 +16,16 @@ fn main() {
 
     tracing::info!("应用程序启动 (WebSocket模式)...");
 
-    // 读取配置
-    let redis_url = std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+    // 读取 Redis 配置 (从 .env 文件)
+    let redis_config = ConfigService::load_redis_config()
+        .expect("无法加载 Redis 配置");
+    let redis_url = redis_config.to_connection_url();
+
+    tracing::info!(
+        redis_config = %redis_config.summary_for_logging(),
+        "已加载 Redis 配置"
+    );
+
     let playwright_server_url = std::env::var("PLAYWRIGHT_SERVER_URL")
         .unwrap_or_else(|_| "ws://localhost:9223".to_string());
     let playwright_validation_script = std::env::var("PLAYWRIGHT_VALIDATION_SCRIPT")

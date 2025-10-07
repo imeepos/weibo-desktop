@@ -239,7 +239,8 @@ impl RedisService {
     /// 用于账户管理界面展示。
     ///
     /// # 注意
-    /// 使用 `SCAN` 而非 `KEYS`,避免阻塞Redis
+    /// 使用 `KEYS` 命令。对于微博 cookies 场景（数量通常 <1000），性能影响可忽略。
+    /// 若需处理大量数据，可改用 SCAN 迭代器实现。
     pub async fn list_all_uids(&self) -> Result<Vec<String>, StorageError> {
         let mut conn = self
             .pool
@@ -248,22 +249,22 @@ impl RedisService {
             .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
 
         let pattern = "weibo:cookies:*";
-        let keys: Vec<String> = redis::cmd("SCAN")
-            .arg("0")
-            .arg("MATCH")
+        let keys: Vec<String> = redis::cmd("KEYS")
             .arg(pattern)
-            .arg("COUNT")
-            .arg(100)
             .query_async(&mut *conn)
             .await
             .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
 
-        let uids = keys
+        let uids: Vec<String> = keys
             .iter()
             .filter_map(|key| key.strip_prefix("weibo:cookies:").map(String::from))
             .collect();
 
-        tracing::debug!(数量 = %keys.len(), "从Redis列出所有UID");
+        tracing::debug!(
+            key数量 = %keys.len(),
+            uid数量 = %uids.len(),
+            "从Redis列出所有UID"
+        );
         Ok(uids)
     }
 }

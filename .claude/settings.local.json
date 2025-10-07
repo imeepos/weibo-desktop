@@ -13,7 +13,14 @@
       "Bash(redis-cli:*)",
       "Bash(docker exec:*)",
       "Bash(curl:*)",
-      "Bash(ss:*)"
+      "Bash(ss:*)",
+      "Bash(./test-redis-config.sh:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker inspect desktop-redis -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')",
+      "Bash(timeout 2 bash -c \"echo > /dev/tcp/172.28.0.10/6379\")",
+      "Bash(timeout 2 bash -c \"echo > /dev/tcp/43.240.223.138/6379\")",
+      "Bash(docker port desktop-redis)",
+      "Bash(pnpm list:*)"
     ],
     "deny": [],
     "ask": []

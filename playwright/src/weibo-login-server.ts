@@ -79,6 +79,7 @@ let globalBrowser: Browser | null = null;
 const activeSessions = new Map<string, {
   context: BrowserContext;
   timeout: NodeJS.Timeout;
+  heartbeatInterval?: NodeJS.Timeout;
 }>();
 
 async function ensureBrowser(): Promise<Browser> {
@@ -108,6 +109,9 @@ async function cleanupSession(sessionId: string) {
   if (!session) return;
 
   clearTimeout(session.timeout);
+  if (session.heartbeatInterval) {
+    clearInterval(session.heartbeatInterval);
+  }
   try {
     await session.context.close();
   } catch (error) {
@@ -130,6 +134,22 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
   let lastRetcode: number | null = null;
   let sessionClosed = false;
 
+  // 监听所有网络请求（用于调试）
+  page.on('request', (request) => {
+    const url = request.url();
+    if (url.includes('qrcode') || url.includes('sso')) {
+      console.log(`[${sessionId}] 🌐 请求: ${request.method()} ${url}`);
+    }
+  });
+
+  // 监听所有网络响应（用于调试）
+  page.on('response', async (response) => {
+    const url = response.url();
+    if (url.includes('qrcode') || url.includes('sso')) {
+      console.log(`[${sessionId}] 📥 响应: ${response.status()} ${url}`);
+    }
+  });
+
   // 设置超时自动清理
   const timeoutHandle = setTimeout(async () => {
     if (!sessionClosed) {
@@ -150,33 +170,46 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
     }
   }, QR_TIMEOUT_MS);
 
+  // 心跳机制：每 10 秒检查一次会话状态
+  const heartbeatInterval = setInterval(() => {
+    if (sessionClosed || ws.readyState !== WebSocket.OPEN) {
+      clearInterval(heartbeatInterval);
+      return;
+    }
+    console.log(`[${sessionId}] 💓 心跳检查 - 会话活跃`);
+  }, 10000);
+
   // 注册会话
-  activeSessions.set(sessionId, { context, timeout: timeoutHandle });
+  activeSessions.set(sessionId, { context, timeout: timeoutHandle, heartbeatInterval });
   console.log(`会话已创建: ${sessionId}, 超时时间: ${QR_TIMEOUT_MS}ms (${QR_TIMEOUT_MS / 1000}秒)`);
 
-  page.on('response', async (response) => {
-    if (!response.url().includes('/sso/v2/qrcode/check') || sessionClosed) return;
+  // 专门处理 qrcode/check 响应
+  page.on('response', async (checkResponse) => {
+    if (!checkResponse.url().includes('/sso/v2/qrcode/check') || sessionClosed) return;
 
-    console.debug(`[${sessionId}] 捕获 /sso/v2/qrcode/check 响应`);
+    console.log(`[${sessionId}] ✅ 捕获 /sso/v2/qrcode/check 响应`);
 
     try {
-      const status = response.status();
-      console.debug(`[${sessionId}] 响应状态码: ${status}`);
+      const status = checkResponse.status();
+      console.log(`[${sessionId}] 响应状态码: ${status}`);
 
-      if (status !== 200) return;
+      if (status !== 200) {
+        console.log(`[${sessionId}] ⚠️  非 200 响应，跳过处理`);
+        return;
+      }
 
-      const data = await response.json();
+      const data = await checkResponse.json();
       const currentRetcode = data.retcode;
       const msg = data.msg || '';
 
-      console.log(`[${sessionId}] retcode=${currentRetcode}, msg="${msg}"`);
+      console.log(`[${sessionId}] 📊 retcode=${currentRetcode}, msg="${msg}"`);
 
       if (currentRetcode !== lastRetcode && ws.readyState === WebSocket.OPEN) {
         if (lastRetcode !== null) {
           console.log(`[${sessionId}] ⚠️  状态变化: retcode ${lastRetcode} -> ${currentRetcode}`);
         }
 
-        console.log(`[${sessionId}] 发送 WebSocket 消息: type=status_update, retcode=${currentRetcode}`);
+        console.log(`[${sessionId}] 📤 发送 WebSocket 消息: type=status_update, retcode=${currentRetcode}`);
         ws.send(JSON.stringify({
           type: 'status_update',
           session_id: sessionId,

@@ -8,11 +8,26 @@
 
 use crate::models::dependency::*;
 use crate::models::errors::DependencyError;
-use crate::services::{DependencyChecker, InstallerService};
-use tracing::{info, error};
+use crate::services::{ConfigService, DependencyChecker, InstallerService};
+use tracing::{info, error, warn};
 
 /// 获取预定义的依赖项列表
 fn get_predefined_dependencies() -> Vec<Dependency> {
+    // 从 .env 读取 Redis 配置,用于环境检测
+    let (redis_host, redis_port) = match ConfigService::load_redis_config() {
+        Ok(config) => {
+            info!(
+                "从配置文件读取 Redis 检测地址: {}:{}",
+                config.host, config.port
+            );
+            (config.host, config.port)
+        }
+        Err(e) => {
+            warn!("无法读取 Redis 配置,使用默认值 localhost:6379: {}", e);
+            ("localhost".to_string(), 6379)
+        }
+    };
+
     vec![
         Dependency::new(
             "nodejs".to_string(),
@@ -53,8 +68,8 @@ fn get_predefined_dependencies() -> Vec<Dependency> {
             false,
             3,
             CheckMethod::Service {
-                host: "localhost".to_string(),
-                port: 6379,
+                host: redis_host,
+                port: redis_port,
             },
             "## 安装Redis\n\n请参考官方文档根据您的操作系统安装Redis".to_string(),
             None,
