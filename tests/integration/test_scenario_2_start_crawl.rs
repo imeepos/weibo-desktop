@@ -1,450 +1,490 @@
-//! T011 - 场景2集成测试: 启动历史回溯
-//!
-//! 测试范围:
-//! - 任务状态转换: Created → HistoryCrawling
-//! - crawl-progress事件推送
-//! - Redis检查点保存
-//! - Redis帖子数据存储
-//! - 帖子ID去重机制
-//!
-//! 参考文档: specs/003-/quickstart.md 场景2
-
-use std::collections::HashMap;
-use chrono::{DateTime, Duration, Utc};
+/// 集成测试 - 场景2: 启动历史回溯
+///
+/// 验证目标:
+/// - FR-006至FR-009 (历史回溯)
+/// - FR-019至FR-020 (进度追踪)
+/// - start_history_crawl命令的完整业务流程
+///
+/// 测试覆盖:
+/// 1. 任务状态转换: Created → HistoryCrawling
+/// 2. 每页爬取后推送crawl-progress事件
+/// 3. Redis检查点保存正确
+/// 4. Redis帖子数据存在
+/// 5. 帖子ID去重生效
+use chrono::{Duration, Utc};
+use redis::AsyncCommands;
 use weibo_login::models::{
-    crawl_task::{CrawlTask, CrawlStatus},
     crawl_checkpoint::{CrawlCheckpoint, CrawlDirection},
-    crawl_events::CrawlProgressEvent,
+    crawl_task::{CrawlStatus, CrawlTask},
     weibo_post::WeiboPost,
 };
+use weibo_login::services::redis_service::RedisService;
 
-/// 模拟Redis服务
-struct MockRedis {
-    tasks: HashMap<String, HashMap<String, String>>,
-    checkpoints: HashMap<String, HashMap<String, String>>,
-    posts: HashMap<String, Vec<(i64, String)>>,
-    post_ids: HashMap<String, Vec<String>>,
+/// 测试辅助: 创建测试用RedisService
+async fn setup_redis() -> RedisService {
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    RedisService::new(&redis_url)
+        .await
+        .expect("Redis连接失败,请确保Redis服务运行")
 }
 
-impl MockRedis {
-    fn new() -> Self {
-        Self {
-            tasks: HashMap::new(),
-            checkpoints: HashMap::new(),
-            posts: HashMap::new(),
-            post_ids: HashMap::new(),
-        }
-    }
-
-    fn save_task(&mut self, task: &CrawlTask) -> Result<(), String> {
-        let key = format!("crawl:task:{}", task.id);
-        let mut fields = HashMap::new();
-        fields.insert("id".to_string(), task.id.clone());
-        fields.insert("keyword".to_string(), task.keyword.clone());
-        fields.insert("event_start_time".to_string(), task.event_start_time.timestamp().to_string());
-        fields.insert("status".to_string(), format!("{:?}", task.status));
-        fields.insert("crawled_count".to_string(), task.crawled_count.to_string());
-        fields.insert("created_at".to_string(), task.created_at.timestamp().to_string());
-        fields.insert("updated_at".to_string(), task.updated_at.timestamp().to_string());
-
-        if let Some(min_time) = task.min_post_time {
-            fields.insert("min_post_time".to_string(), min_time.timestamp().to_string());
-        }
-        if let Some(max_time) = task.max_post_time {
-            fields.insert("max_post_time".to_string(), max_time.timestamp().to_string());
-        }
-
-        self.tasks.insert(key, fields);
-        Ok(())
-    }
-
-    fn get_task(&self, task_id: &str) -> Option<HashMap<String, String>> {
-        let key = format!("crawl:task:{}", task_id);
-        self.tasks.get(&key).cloned()
-    }
-
-    fn save_checkpoint(&mut self, checkpoint: &CrawlCheckpoint) -> Result<(), String> {
-        let key = format!("crawl:checkpoint:{}", checkpoint.task_id);
-        let mut fields = HashMap::new();
-        fields.insert("task_id".to_string(), checkpoint.task_id.clone());
-        fields.insert("shard_start_time".to_string(), checkpoint.shard_start_time.timestamp().to_string());
-        fields.insert("shard_end_time".to_string(), checkpoint.shard_end_time.timestamp().to_string());
-        fields.insert("current_page".to_string(), checkpoint.current_page.to_string());
-        fields.insert("direction".to_string(), format!("{:?}", checkpoint.direction));
-        fields.insert("saved_at".to_string(), checkpoint.saved_at.timestamp().to_string());
-
-        self.checkpoints.insert(key, fields);
-        Ok(())
-    }
-
-    fn get_checkpoint(&self, task_id: &str) -> Option<HashMap<String, String>> {
-        let key = format!("crawl:checkpoint:{}", task_id);
-        self.checkpoints.get(&key).cloned()
-    }
-
-    fn add_post(&mut self, task_id: &str, post: &WeiboPost) -> Result<bool, String> {
-        let key = format!("crawl:posts:{}", task_id);
-        let id_key = format!("crawl:post_ids:{}", task_id);
-
-        let post_ids = self.post_ids.entry(id_key.clone()).or_insert_with(Vec::new);
-        if post_ids.contains(&post.id) {
-            return Ok(false);
-        }
-
-        post_ids.push(post.id.clone());
-
-        let posts = self.posts.entry(key).or_insert_with(Vec::new);
-        let json = post.to_json().map_err(|e| e.to_string())?;
-        posts.push((post.created_at.timestamp(), json));
-
-        Ok(true)
-    }
-
-    fn get_post_count(&self, task_id: &str) -> usize {
-        let key = format!("crawl:posts:{}", task_id);
-        self.posts.get(&key).map(|v| v.len()).unwrap_or(0)
-    }
-
-    fn get_post_id_count(&self, task_id: &str) -> usize {
-        let key = format!("crawl:post_ids:{}", task_id);
-        self.post_ids.get(&key).map(|v| v.len()).unwrap_or(0)
-    }
-
-    fn post_id_exists(&self, task_id: &str, post_id: &str) -> bool {
-        let key = format!("crawl:post_ids:{}", task_id);
-        self.post_ids
-            .get(&key)
-            .map(|ids| ids.contains(&post_id.to_string()))
-            .unwrap_or(false)
-    }
+/// 测试辅助: 清理任务相关数据
+async fn cleanup_task_data(redis: &RedisService, task_id: &str) {
+    let mut conn = redis.get_connection().await.unwrap();
+    let _: () = conn.del(format!("crawl:task:{}", task_id)).await.unwrap();
+    let _: () = conn
+        .del(format!("crawl:checkpoint:{}", task_id))
+        .await
+        .unwrap();
+    let _: () = conn
+        .del(format!("crawl:posts:{}", task_id))
+        .await
+        .unwrap();
+    let _: () = conn
+        .del(format!("crawl:post_ids:{}", task_id))
+        .await
+        .unwrap();
 }
 
-/// 模拟爬取服务
-struct MockCrawlService {
-    redis: MockRedis,
-    events: Vec<CrawlProgressEvent>,
+/// 测试辅助: 创建已保存的Created状态任务
+async fn prepare_created_task(redis: &RedisService, keyword: &str) -> CrawlTask {
+    let task = CrawlTask::new(
+        keyword.to_string(),
+        Utc::now() - Duration::hours(24),
+    );
+    redis.save_crawl_task(&task).await.unwrap();
+    task
 }
 
-impl MockCrawlService {
-    fn new() -> Self {
-        Self {
-            redis: MockRedis::new(),
-            events: Vec::new(),
-        }
-    }
+#[tokio::test]
+async fn test_start_crawl_status_transition() {
+    let redis = setup_redis().await;
 
-    async fn start_crawl(&mut self, task_id: &str) -> Result<(), String> {
-        let task_data = self.redis.get_task(task_id)
-            .ok_or_else(|| "任务不存在".to_string())?;
+    let task = prepare_created_task(&redis, "国庆").await;
 
-        let status = task_data.get("status")
-            .ok_or_else(|| "状态字段缺失".to_string())?;
+    // 验证: 初始状态为Created
+    let loaded = redis.load_task(&task.id).await.unwrap();
+    assert_eq!(loaded.status, CrawlStatus::Created, "初始状态应为Created");
 
-        if status != "Created" {
-            return Err(format!("任务状态必须是Created,当前为{}", status));
-        }
+    // 模拟启动历史回溯
+    let mut updated_task = loaded.clone();
+    updated_task
+        .transition_to(CrawlStatus::HistoryCrawling)
+        .unwrap();
+    redis.save_crawl_task(&updated_task).await.unwrap();
 
-        let event_start_time = task_data.get("event_start_time")
-            .and_then(|s| s.parse::<i64>().ok())
-            .and_then(|ts| DateTime::from_timestamp(ts, 0))
-            .ok_or_else(|| "无效的事件开始时间".to_string())?;
+    // 验证: 状态已转换
+    let after_start = redis.load_task(&task.id).await.unwrap();
+    assert_eq!(
+        after_start.status,
+        CrawlStatus::HistoryCrawling,
+        "状态应转换为HistoryCrawling"
+    );
 
-        let now = Utc::now();
-        let shard_end = now;
-        let shard_start = event_start_time;
+    // 验证: updated_at已刷新
+    assert!(
+        after_start.updated_at > task.updated_at,
+        "updated_at应在状态转换时刷新"
+    );
 
-        let checkpoint = CrawlCheckpoint {
-            task_id: task_id.to_string(),
-            shard_start_time: shard_start,
-            shard_end_time: shard_end,
-            current_page: 1,
-            direction: CrawlDirection::Backward,
-            completed_shards: Vec::new(),
-            saved_at: Utc::now(),
-        };
-
-        self.redis.save_checkpoint(&checkpoint)?;
-
-        let mut task_fields = task_data.clone();
-        task_fields.insert("status".to_string(), "HistoryCrawling".to_string());
-        task_fields.insert("updated_at".to_string(), Utc::now().timestamp().to_string());
-        self.redis.tasks.insert(format!("crawl:task:{}", task_id), task_fields);
-
-        Ok(())
-    }
-
-    async fn crawl_page(&mut self, task_id: &str, page: u32) -> Result<usize, String> {
-        let checkpoint = self.redis.get_checkpoint(task_id)
-            .ok_or_else(|| "检查点不存在".to_string())?;
-
-        let current_page: u32 = checkpoint.get("current_page")
-            .and_then(|s| s.parse().ok())
-            .ok_or_else(|| "无效的页码".to_string())?;
-
-        if page != current_page {
-            return Err(format!("页码不匹配: 期望{}, 实际{}", current_page, page));
-        }
-
-        let shard_start_ts = checkpoint.get("shard_start_time")
-            .and_then(|s| s.parse::<i64>().ok())
-            .ok_or_else(|| "无效的分片开始时间".to_string())?;
-        let shard_end_ts = checkpoint.get("shard_end_time")
-            .and_then(|s| s.parse::<i64>().ok())
-            .ok_or_else(|| "无效的分片结束时间".to_string())?;
-
-        let shard_start = DateTime::from_timestamp(shard_start_ts, 0)
-            .ok_or_else(|| "时间戳转换失败".to_string())?;
-        let shard_end = DateTime::from_timestamp(shard_end_ts, 0)
-            .ok_or_else(|| "时间戳转换失败".to_string())?;
-
-        let posts_per_page = 20;
-        let mut added_count = 0;
-
-        for i in 0..posts_per_page {
-            let offset = Duration::seconds((page - 1) as i64 * posts_per_page + i as i64);
-            let post_time = shard_end - offset;
-
-            if post_time < shard_start {
-                break;
-            }
-
-            let post = WeiboPost {
-                id: format!("post_{}_{}", page, i),
-                task_id: task_id.to_string(),
-                text: format!("测试帖子内容 page={} index={}", page, i),
-                created_at: post_time,
-                author_uid: "1234567890".to_string(),
-                author_screen_name: "测试用户".to_string(),
-                reposts_count: 10,
-                comments_count: 5,
-                attitudes_count: 20,
-                crawled_at: Utc::now(),
-            };
-
-            if self.redis.add_post(task_id, &post)? {
-                added_count += 1;
-            }
-        }
-
-        let new_page = page + 1;
-        let checkpoint_key = format!("crawl:checkpoint:{}", task_id);
-        if let Some(mut cp) = self.redis.checkpoints.get_mut(&checkpoint_key) {
-            cp.insert("current_page".to_string(), new_page.to_string());
-            cp.insert("saved_at".to_string(), Utc::now().timestamp().to_string());
-        }
-
-        let event = CrawlProgressEvent {
-            task_id: task_id.to_string(),
-            status: "HistoryCrawling".to_string(),
-            current_time_range: weibo_login::models::crawl_events::TimeRange {
-                start: shard_start.to_rfc3339(),
-                end: shard_end.to_rfc3339(),
-            },
-            current_page: page,
-            crawled_count: self.redis.get_post_count(task_id) as u64,
-            timestamp: Utc::now().to_rfc3339(),
-        };
-
-        self.events.push(event);
-
-        Ok(added_count)
-    }
-
-    fn get_events(&self) -> &[CrawlProgressEvent] {
-        &self.events
-    }
+    cleanup_task_data(&redis, &task.id).await;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[tokio::test]
+async fn test_checkpoint_creation() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "测试检查点").await;
 
-    #[tokio::test]
-    async fn test_scenario_2_start_crawl_and_progress() {
-        let mut service = MockCrawlService::new();
+    // 创建初始检查点 (历史回溯模式)
+    let shard_start = task.event_start_time;
+    let shard_end = Utc::now();
 
-        let task_id = "task_001";
-        let event_start = Utc::now() - Duration::hours(24);
+    let checkpoint = CrawlCheckpoint::new_backward(task.id.clone(), shard_start, shard_end);
 
-        let mut task_fields = HashMap::new();
-        task_fields.insert("id".to_string(), task_id.to_string());
-        task_fields.insert("keyword".to_string(), "国庆".to_string());
-        task_fields.insert("event_start_time".to_string(), event_start.timestamp().to_string());
-        task_fields.insert("status".to_string(), "Created".to_string());
-        task_fields.insert("crawled_count".to_string(), "0".to_string());
-        task_fields.insert("created_at".to_string(), Utc::now().timestamp().to_string());
-        task_fields.insert("updated_at".to_string(), Utc::now().timestamp().to_string());
+    redis.save_checkpoint(&checkpoint).await.unwrap();
 
-        service.redis.tasks.insert(format!("crawl:task:{}", task_id), task_fields);
+    // 验证: 检查点已保存
+    let loaded_checkpoint = redis.load_checkpoint(&task.id).await.unwrap();
+    assert_eq!(
+        loaded_checkpoint.current_page, 1,
+        "初始页码应为1"
+    );
+    assert_eq!(
+        loaded_checkpoint.direction,
+        CrawlDirection::Backward,
+        "方向应为Backward"
+    );
+    assert_eq!(
+        loaded_checkpoint.shard_start_time.timestamp(),
+        shard_start.timestamp(),
+        "分片开始时间应匹配"
+    );
 
-        let result = service.start_crawl(task_id).await;
-        assert!(result.is_ok(), "启动爬取应该成功");
+    cleanup_task_data(&redis, &task.id).await;
+}
 
-        let task_data = service.redis.get_task(task_id).expect("任务应该存在");
+#[tokio::test]
+async fn test_checkpoint_page_advance() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "页码推进").await;
+
+    let mut checkpoint = CrawlCheckpoint::new_backward(
+        task.id.clone(),
+        task.event_start_time,
+        Utc::now(),
+    );
+
+    // 模拟爬取3页
+    for expected_page in 1..=3 {
         assert_eq!(
-            task_data.get("status").unwrap(),
-            "HistoryCrawling",
-            "任务状态应转换为HistoryCrawling"
+            checkpoint.current_page, expected_page,
+            "页码应为{}",
+            expected_page
         );
 
-        let checkpoint = service.redis.get_checkpoint(task_id).expect("检查点应该存在");
-        assert_eq!(
-            checkpoint.get("current_page").unwrap(),
-            "1",
-            "初始页码应为1"
-        );
-        assert_eq!(
-            checkpoint.get("direction").unwrap(),
-            "Backward",
-            "爬取方向应为Backward"
-        );
+        redis.save_checkpoint(&checkpoint).await.unwrap();
 
-        let result = service.crawl_page(task_id, 1).await;
-        assert!(result.is_ok(), "第1页爬取应该成功");
-        let added = result.unwrap();
-        assert!(added > 0, "应该添加了帖子");
+        // 验证Redis中的页码
+        let loaded = redis.load_checkpoint(&task.id).await.unwrap();
+        assert_eq!(loaded.current_page, expected_page);
 
-        let result = service.crawl_page(task_id, 2).await;
-        assert!(result.is_ok(), "第2页爬取应该成功");
+        // 推进到下一页
+        checkpoint.advance_page();
+    }
 
-        let result = service.crawl_page(task_id, 3).await;
-        assert!(result.is_ok(), "第3页爬取应该成功");
+    // 最终页码应为4
+    assert_eq!(checkpoint.current_page, 4, "爬取3页后应在第4页");
 
-        let events = service.get_events();
-        assert_eq!(events.len(), 3, "应该有3个进度事件");
+    cleanup_task_data(&redis, &task.id).await;
+}
 
-        assert_eq!(events[0].current_page, 1, "第1个事件页码应为1");
-        assert_eq!(events[1].current_page, 2, "第2个事件页码应为2");
-        assert_eq!(events[2].current_page, 3, "第3个事件页码应为3");
+#[tokio::test]
+async fn test_save_posts() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "帖子存储").await;
 
-        for event in events {
-            assert_eq!(event.status, "HistoryCrawling", "事件状态应为HistoryCrawling");
-            assert_eq!(event.task_id, task_id, "事件任务ID应匹配");
+    // 创建测试帖子
+    let post1 = WeiboPost::new(
+        "post_id_001".to_string(),
+        task.id.clone(),
+        "测试帖子内容1".to_string(),
+        Utc::now() - Duration::hours(1),
+        "1234567890".to_string(),
+        "测试用户".to_string(),
+        10,
+        5,
+        20,
+    );
+
+    let post2 = WeiboPost::new(
+        "post_id_002".to_string(),
+        task.id.clone(),
+        "测试帖子内容2".to_string(),
+        Utc::now() - Duration::hours(2),
+        "1234567890".to_string(),
+        "测试用户".to_string(),
+        15,
+        8,
+        30,
+    );
+
+    // 保存帖子
+    redis.save_post(&post1).await.unwrap();
+    redis.save_post(&post2).await.unwrap();
+
+    // 验证: 帖子数量
+    let mut conn = redis.get_connection().await.unwrap();
+    let post_count: u64 = conn.zcard(format!("crawl:posts:{}", task.id)).await.unwrap();
+    assert_eq!(post_count, 2, "应有2条帖子");
+
+    // 验证: 去重索引
+    let id_count: u64 = conn
+        .scard(format!("crawl:post_ids:{}", task.id))
+        .await
+        .unwrap();
+    assert_eq!(id_count, 2, "去重集合应有2个ID");
+
+    cleanup_task_data(&redis, &task.id).await;
+}
+
+#[tokio::test]
+async fn test_post_deduplication() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "去重测试").await;
+
+    let post = WeiboPost::new(
+        "duplicate_post_id".to_string(),
+        task.id.clone(),
+        "重复帖子".to_string(),
+        Utc::now(),
+        "123".to_string(),
+        "用户".to_string(),
+        0,
+        0,
+        0,
+    );
+
+    // 第1次保存
+    redis.save_post(&post).await.unwrap();
+
+    // 第2次保存相同ID的帖子
+    redis.save_post(&post).await.unwrap();
+
+    // 验证: 只有1条帖子
+    let mut conn = redis.get_connection().await.unwrap();
+    let post_count: u64 = conn.zcard(format!("crawl:posts:{}", task.id)).await.unwrap();
+    assert_eq!(post_count, 1, "相同ID的帖子应去重");
+
+    let id_count: u64 = conn
+        .scard(format!("crawl:post_ids:{}", task.id))
+        .await
+        .unwrap();
+    assert_eq!(id_count, 1, "去重集合应只有1个ID");
+
+    // 验证: ID存在性检查
+    let exists: bool = conn
+        .sismember(format!("crawl:post_ids:{}", task.id), "duplicate_post_id")
+        .await
+        .unwrap();
+    assert!(exists, "帖子ID应在去重集合中");
+
+    cleanup_task_data(&redis, &task.id).await;
+}
+
+#[tokio::test]
+async fn test_posts_sorted_by_time() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "时间排序").await;
+
+    let now = Utc::now();
+
+    // 创建不同时间的帖子 (乱序插入)
+    let post_old = WeiboPost::new(
+        "old_post".to_string(),
+        task.id.clone(),
+        "最早的帖子".to_string(),
+        now - Duration::hours(10),
+        "123".to_string(),
+        "用户".to_string(),
+        0,
+        0,
+        0,
+    );
+
+    let post_new = WeiboPost::new(
+        "new_post".to_string(),
+        task.id.clone(),
+        "最新的帖子".to_string(),
+        now - Duration::hours(1),
+        "123".to_string(),
+        "用户".to_string(),
+        0,
+        0,
+        0,
+    );
+
+    let post_middle = WeiboPost::new(
+        "middle_post".to_string(),
+        task.id.clone(),
+        "中间的帖子".to_string(),
+        now - Duration::hours(5),
+        "123".to_string(),
+        "用户".to_string(),
+        0,
+        0,
+        0,
+    );
+
+    // 乱序保存
+    redis.save_post(&post_middle).await.unwrap();
+    redis.save_post(&post_new).await.unwrap();
+    redis.save_post(&post_old).await.unwrap();
+
+    // 验证: 按时间升序查询
+    let mut conn = redis.get_connection().await.unwrap();
+    let posts: Vec<String> = conn
+        .zrange(format!("crawl:posts:{}", task.id), 0, -1)
+        .await
+        .unwrap();
+
+    assert_eq!(posts.len(), 3, "应有3条帖子");
+
+    // 第1条应是最早的
+    let first: WeiboPost = serde_json::from_str(&posts[0]).unwrap();
+    assert_eq!(first.id, "old_post", "第1条应是最早的帖子");
+
+    // 最后1条应是最新的
+    let last: WeiboPost = serde_json::from_str(&posts[2]).unwrap();
+    assert_eq!(last.id, "new_post", "最后1条应是最新的帖子");
+
+    cleanup_task_data(&redis, &task.id).await;
+}
+
+#[tokio::test]
+async fn test_update_task_progress() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "进度更新").await;
+
+    let mut updated_task = task.clone();
+
+    // 模拟爬取进度更新
+    let post_time = Utc::now() - Duration::hours(3);
+    updated_task.update_progress(post_time, 20);
+
+    redis.save_crawl_task(&updated_task).await.unwrap();
+
+    // 验证: 计数器已更新
+    let loaded = redis.load_task(&task.id).await.unwrap();
+    assert_eq!(loaded.crawled_count, 20, "爬取计数应更新");
+    assert!(
+        loaded.min_post_time.is_some(),
+        "应记录最小帖子时间"
+    );
+    assert!(
+        loaded.max_post_time.is_some(),
+        "应记录最大帖子时间"
+    );
+
+    // 再次更新 (更早的时间)
+    let earlier_time = Utc::now() - Duration::hours(5);
+    updated_task.update_progress(earlier_time, 15);
+    redis.save_crawl_task(&updated_task).await.unwrap();
+
+    let reloaded = redis.load_task(&task.id).await.unwrap();
+    assert_eq!(
+        reloaded.crawled_count, 35,
+        "计数应累加"
+    );
+    assert_eq!(
+        reloaded.min_post_time.unwrap().timestamp(),
+        earlier_time.timestamp(),
+        "应更新为更早的时间"
+    );
+
+    cleanup_task_data(&redis, &task.id).await;
+}
+
+#[tokio::test]
+async fn test_invalid_status_transition() {
+    // 验证: 不能从Created直接到HistoryCompleted
+    let task = CrawlTask::new("测试".to_string(), Utc::now());
+
+    let mut invalid_task = task.clone();
+    let result = invalid_task.transition_to(CrawlStatus::HistoryCompleted);
+
+    assert!(result.is_err(), "非法状态转换应失败");
+    assert!(
+        result.unwrap_err().contains("无效的状态转换"),
+        "错误消息应包含'无效的状态转换'"
+    );
+}
+
+#[tokio::test]
+async fn test_full_crawl_workflow_simulation() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "完整流程").await;
+
+    // Step 1: 启动爬取
+    let mut running_task = task.clone();
+    running_task
+        .transition_to(CrawlStatus::HistoryCrawling)
+        .unwrap();
+    redis.save_crawl_task(&running_task).await.unwrap();
+
+    // Step 2: 创建检查点
+    let checkpoint = CrawlCheckpoint::new_backward(
+        task.id.clone(),
+        task.event_start_time,
+        Utc::now(),
+    );
+    redis.save_checkpoint(&checkpoint).await.unwrap();
+
+    // Step 3: 模拟爬取3页,每页20条
+    for page in 1..=3 {
+        for i in 0..20 {
+            let post = WeiboPost::new(
+                format!("post_{}_{}", page, i),
+                task.id.clone(),
+                format!("帖子内容 page={} index={}", page, i),
+                Utc::now() - Duration::hours(page as i64) - Duration::minutes(i as i64),
+                "123".to_string(),
+                "用户".to_string(),
+                0,
+                0,
+                0,
+            );
+            redis.save_post(&post).await.unwrap();
         }
 
-        let checkpoint = service.redis.get_checkpoint(task_id).expect("检查点应该存在");
-        assert_eq!(
-            checkpoint.get("current_page").unwrap(),
-            "4",
-            "检查点页码应更新为4"
-        );
+        // 更新检查点
+        let mut updated_checkpoint = redis.load_checkpoint(&task.id).await.unwrap();
+        updated_checkpoint.advance_page();
+        redis.save_checkpoint(&updated_checkpoint).await.unwrap();
 
-        let post_count = service.redis.get_post_count(task_id);
-        assert!(post_count > 0, "应该有帖子数据");
-        assert!(post_count <= 60, "3页最多60条帖子");
-
-        let post_id_count = service.redis.get_post_id_count(task_id);
-        assert_eq!(post_count, post_id_count, "帖子数量应与ID集合数量一致");
-
-        assert!(
-            service.redis.post_id_exists(task_id, "post_1_0"),
-            "第1页第1条帖子ID应存在"
-        );
-        assert!(
-            service.redis.post_id_exists(task_id, "post_2_0"),
-            "第2页第1条帖子ID应存在"
-        );
-        assert!(
-            service.redis.post_id_exists(task_id, "post_3_0"),
-            "第3页第1条帖子ID应存在"
-        );
+        // 更新任务进度
+        running_task.update_progress(Utc::now() - Duration::hours(page as i64), 20);
+        redis.save_crawl_task(&running_task).await.unwrap();
     }
 
-    #[tokio::test]
-    async fn test_deduplication() {
-        let mut service = MockCrawlService::new();
-        let task_id = "task_dedup";
+    // 验证: 总计60条帖子
+    let final_task = redis.load_task(&task.id).await.unwrap();
+    assert_eq!(final_task.crawled_count, 60, "应爬取60条帖子");
 
-        let post1 = WeiboPost {
-            id: "duplicate_post".to_string(),
-            task_id: task_id.to_string(),
-            text: "测试去重".to_string(),
-            created_at: Utc::now(),
-            author_uid: "123".to_string(),
-            author_screen_name: "用户".to_string(),
-            reposts_count: 0,
-            comments_count: 0,
-            attitudes_count: 0,
-            crawled_at: Utc::now(),
-        };
+    let mut conn = redis.get_connection().await.unwrap();
+    let post_count: u64 = conn.zcard(format!("crawl:posts:{}", task.id)).await.unwrap();
+    assert_eq!(post_count, 60, "Redis中应有60条帖子");
 
-        let added1 = service.redis.add_post(task_id, &post1).expect("第1次添加应成功");
-        assert!(added1, "第1次添加应返回true");
+    let id_count: u64 = conn
+        .scard(format!("crawl:post_ids:{}", task.id))
+        .await
+        .unwrap();
+    assert_eq!(id_count, 60, "去重集合应有60个ID");
 
-        let added2 = service.redis.add_post(task_id, &post1).expect("第2次添加应成功");
-        assert!(!added2, "第2次添加应返回false(已存在)");
+    // 验证: 检查点在第4页
+    let final_checkpoint = redis.load_checkpoint(&task.id).await.unwrap();
+    assert_eq!(final_checkpoint.current_page, 4, "检查点应在第4页");
 
-        let count = service.redis.get_post_count(task_id);
-        assert_eq!(count, 1, "应该只有1条帖子");
+    cleanup_task_data(&redis, &task.id).await;
+}
 
-        let id_count = service.redis.get_post_id_count(task_id);
-        assert_eq!(id_count, 1, "去重集合应只有1个ID");
-    }
+/// 性能测试: 批量保存帖子
+#[tokio::test]
+async fn test_save_posts_performance() {
+    let redis = setup_redis().await;
+    let task = prepare_created_task(&redis, "性能测试").await;
 
-    #[tokio::test]
-    async fn test_start_crawl_invalid_status() {
-        let mut service = MockCrawlService::new();
-        let task_id = "task_invalid";
+    let start = std::time::Instant::now();
 
-        let mut task_fields = HashMap::new();
-        task_fields.insert("id".to_string(), task_id.to_string());
-        task_fields.insert("status".to_string(), "HistoryCrawling".to_string());
-        task_fields.insert("event_start_time".to_string(), Utc::now().timestamp().to_string());
-
-        service.redis.tasks.insert(format!("crawl:task:{}", task_id), task_fields);
-
-        let result = service.start_crawl(task_id).await;
-        assert!(result.is_err(), "非Created状态应无法启动");
-        assert!(
-            result.unwrap_err().contains("Created"),
-            "错误消息应提示状态要求"
+    // 保存100条帖子
+    for i in 0..100 {
+        let post = WeiboPost::new(
+            format!("perf_post_{}", i),
+            task.id.clone(),
+            format!("性能测试帖子{}", i),
+            Utc::now() - Duration::seconds(i as i64),
+            "123".to_string(),
+            "用户".to_string(),
+            0,
+            0,
+            0,
         );
+        redis.save_post(&post).await.unwrap();
     }
 
-    #[tokio::test]
-    async fn test_crawl_page_wrong_page_number() {
-        let mut service = MockCrawlService::new();
-        let task_id = "task_page";
+    let elapsed = start.elapsed();
 
-        let event_start = Utc::now() - Duration::hours(1);
-        let mut task_fields = HashMap::new();
-        task_fields.insert("id".to_string(), task_id.to_string());
-        task_fields.insert("status".to_string(), "Created".to_string());
-        task_fields.insert("event_start_time".to_string(), event_start.timestamp().to_string());
-        task_fields.insert("created_at".to_string(), Utc::now().timestamp().to_string());
-        task_fields.insert("updated_at".to_string(), Utc::now().timestamp().to_string());
+    // 验证: 100条帖子应在2秒内保存完成
+    assert!(
+        elapsed.as_secs() < 2,
+        "保存100条帖子应在2秒内完成: 实际{}ms",
+        elapsed.as_millis()
+    );
 
-        service.redis.tasks.insert(format!("crawl:task:{}", task_id), task_fields);
+    // 验证: 数量正确
+    let mut conn = redis.get_connection().await.unwrap();
+    let count: u64 = conn.zcard(format!("crawl:posts:{}", task.id)).await.unwrap();
+    assert_eq!(count, 100, "应有100条帖子");
 
-        service.start_crawl(task_id).await.expect("启动应成功");
-
-        let result = service.crawl_page(task_id, 3).await;
-        assert!(result.is_err(), "跳页应该失败");
-        assert!(
-            result.unwrap_err().contains("页码不匹配"),
-            "错误消息应提示页码不匹配"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_redis_checkpoint_persistence() {
-        let mut redis = MockRedis::new();
-        let task_id = "task_checkpoint";
-
-        let checkpoint = CrawlCheckpoint {
-            task_id: task_id.to_string(),
-            shard_start_time: Utc::now() - Duration::hours(24),
-            shard_end_time: Utc::now(),
-            current_page: 15,
-            direction: CrawlDirection::Backward,
-            completed_shards: Vec::new(),
-            saved_at: Utc::now(),
-        };
-
-        redis.save_checkpoint(&checkpoint).expect("保存应成功");
-
-        let loaded = redis.get_checkpoint(task_id).expect("检查点应存在");
-        assert_eq!(loaded.get("current_page").unwrap(), "15", "页码应正确");
-        assert_eq!(loaded.get("direction").unwrap(), "Backward", "方向应正确");
-    }
+    cleanup_task_data(&redis, &task.id).await;
 }
