@@ -49,11 +49,11 @@ fi
 # 2. 检查 Rust 后端代码编译
 test_case "编译 Rust 后端代码"
 cd src-tauri
-if cargo check --quiet 2>&1 | grep -q "error"; then
+if cargo check 2>&1 | grep -qi "^error"; then
     fail "Rust 代码编译失败"
     cargo check 2>&1 | tail -20
 else
-    echo "Rust 代码编译成功"
+    echo "Rust 代码编译成功 (忽略 warnings)"
     pass
 fi
 cd ..
@@ -85,24 +85,24 @@ else
     fail "导航配置缺失"
 fi
 
-# 6. 测试 Redis 连接 (通过 redis-cli)
-test_case "测试 Redis 连接 (localhost:6379)"
-if timeout 2 redis-cli -h localhost -p 6379 PING > /dev/null 2>&1; then
-    echo "Redis 连接成功 (localhost:6379)"
-    pass
-else
-    echo "尝试通过 Docker 网络连接..."
-    REDIS_IP=$(docker inspect desktop-redis | grep -m 1 '"IPAddress"' | awk -F'"' '{print $4}')
-    if [ -n "$REDIS_IP" ]; then
-        echo "Redis Docker IP: $REDIS_IP"
-        if timeout 2 redis-cli -h "$REDIS_IP" -p 6379 PING > /dev/null 2>&1; then
-            echo "Redis 连接成功 ($REDIS_IP:6379)"
-            pass
-        else
-            fail "Redis 连接失败"
-        fi
+# 6. 测试 Redis 连接 (通过 redis-cli 或 docker exec)
+test_case "测试 Redis 连接"
+# 优先尝试本地 redis-cli
+if command -v redis-cli > /dev/null 2>&1; then
+    if timeout 2 redis-cli -h localhost -p 6379 PING > /dev/null 2>&1; then
+        echo "Redis 连接成功 (localhost:6379)"
+        pass
     else
-        fail "无法获取 Redis IP"
+        fail "Redis 本地连接失败"
+    fi
+else
+    # 如果没有 redis-cli,使用 docker exec
+    echo "未安装 redis-cli,尝试通过 docker exec 连接..."
+    if docker exec desktop-redis redis-cli PING > /dev/null 2>&1; then
+        echo "Redis 容器内部连接成功 (docker exec)"
+        pass
+    else
+        fail "Redis 容器连接失败"
     fi
 fi
 
