@@ -69,6 +69,12 @@ fn main() {
             commands::redis_commands::test_redis_connection,
             commands::redis_commands::save_redis_config,
             commands::redis_commands::load_redis_config,
+            commands::crawl_commands::create_crawl_task,
+            commands::crawl_commands::start_crawl,
+            commands::crawl_commands::pause_crawl,
+            commands::crawl_commands::get_crawl_progress,
+            commands::crawl_commands::export_crawl_data,
+            commands::crawl_commands::list_crawl_tasks,
         ])
         .setup(move |_app| {
             // 浏览器后端选择

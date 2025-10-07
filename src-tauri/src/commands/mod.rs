@@ -9,11 +9,9 @@
 /// - crawl_commands: 微博爬取任务管理 (003功能)
 
 pub mod cookies_commands;
+pub mod crawl_commands;
 pub mod dependency_commands;
 pub mod log_commands;
 pub mod playwright_commands;
 pub mod qrcode_commands;
 pub mod redis_commands;
-
-// 003-爬取任务命令 (T026将实现)
-// pub mod crawl_commands;
