@@ -463,9 +463,9 @@ Phase 3.5: Polish (优化和单元测试)
 - `format_weibo_time(dt: DateTime<Utc>) -> String`: 格式化为微博API时间参数 (YYYYMMDDhhmmss)
 
 **完成标准**:
-- [ ] 所有函数实现完成
-- [ ] 边界情况处理正确
-- [ ] 编写单元测试验证
+- [X] 所有函数实现完成
+- [X] 边界情况处理正确
+- [X] 编写单元测试验证
 
 **依赖**: 无
 
@@ -491,9 +491,9 @@ Phase 3.5: Polish (优化和单元测试)
 - `check_post_exists(&self, task_id: &str, post_id: &str) -> Result<bool>`: 检查帖子是否已存在 (SISMEMBER)
 
 **完成标准**:
-- [ ] 所有方法实现完成
-- [ ] Redis命令使用正确
-- [ ] 通过T004-T009部分测试
+- [X] 所有方法实现完成
+- [X] Redis命令使用正确
+- [X] 通过T004-T009部分测试
 
 **依赖**: T018-T020 (依赖CrawlTask, WeiboPost, CrawlCheckpoint模型)
 
@@ -517,10 +517,10 @@ Phase 3.5: Polish (优化和单元测试)
 - `estimate_total_results()`: 估算时间范围内结果数 (通过爬取第一页)
 
 **完成标准**:
-- [ ] 算法实现正确
-- [ ] 递归终止条件处理
-- [ ] 编写单元测试验证
-- [ ] 通过T011部分测试
+- [X] 算法实现正确
+- [X] 递归终止条件处理
+- [X] 编写单元测试验证
+- [X] 通过T011部分测试
 
 **依赖**: T022 (依赖time_utils), T023 (依赖RedisService)
 
@@ -552,10 +552,10 @@ Phase 3.5: Polish (优化和单元测试)
   - 验证码检测
 
 **完成标准**:
-- [ ] 所有方法实现完成
-- [ ] 后台任务管理正确 (tokio::spawn)
-- [ ] 事件推送正确
-- [ ] 通过T005, T011-T014测试
+- [X] 所有方法实现完成
+- [X] 后台任务管理正确 (tokio::spawn)
+- [X] 事件推送正确
+- [X] 通过T005, T011-T014测试
 
 **依赖**: T023 (依赖RedisService), T024 (依赖TimeShardService)
 
@@ -579,10 +579,10 @@ Phase 3.5: Polish (优化和单元测试)
 - `list_crawl_tasks(status, sort_by, sort_order) -> Result<Vec<CrawlTaskSummary>>`: 列出任务
 
 **完成标准**:
-- [ ] 所有commands实现完成
-- [ ] 错误处理完整 (符合契约错误码)
-- [ ] 在main.rs中注册commands
-- [ ] 通过T004-T009所有契约测试
+- [X] 所有commands实现完成
+- [X] 错误处理完整 (符合契约错误码)
+- [X] 在main.rs中注册commands
+- [X] 通过T004-T009所有契约测试
 
 **依赖**: T025 (依赖CrawlService)
 
