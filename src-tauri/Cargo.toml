@@ -111,3 +111,16 @@ path = "../tests/contract/test_export_crawl_data.rs"
 [[test]]
 name = "contract_get_crawl_progress"
 path = "../tests/contract/test_get_crawl_progress.rs"
+
+# 单元测试
+[[test]]
+name = "unit_time_utils"
+path = "tests/unit/test_time_utils.rs"
+
+[[test]]
+name = "unit_weibo_post_validation"
+path = "tests/unit/test_weibo_post_validation.rs"
+
+[[test]]
+name = "unit_crawl_task_model"
+path = "tests/unit/test_crawl_task_model.rs"
