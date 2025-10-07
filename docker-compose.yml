@@ -176,7 +176,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - REDIS_URL=redis://172.28.0.10:6379
+      - REDIS_URL=redis://:Redis2025Complex@43.240.223.138:6379
       - PORT=3000
       - NODE_ENV=production
     ports:
@@ -216,7 +216,7 @@ services:
       playwright-server:
         condition: service_healthy
     environment:
-      - REDIS_URL=redis://172.28.0.10:6379
+      - REDIS_URL=redis://:Redis2025Complex@43.240.223.138:6379
       - PLAYWRIGHT_SERVER_URL=http://172.28.0.14:3000
       - CI=true
       - PLAYWRIGHT_HEADLESS=true
@@ -256,7 +256,7 @@ services:
       playwright-server:
         condition: service_healthy
     environment:
-      - REDIS_URL=redis://172.28.0.10:6379
+      - REDIS_URL=redis://:Redis2025Complex@43.240.223.138:6379
       - DATABASE_URL=postgresql://desktop_user:desktop_pass@172.28.0.11:5432/weibo_desktop
       - MONGODB_URL=mongodb://root:root_pass@172.28.0.12:27017/weibo_desktop?authSource=admin
       - RABBITMQ_URL=amqp://desktop_user:desktop_pass@172.28.0.13:5672/weibo_desktop
