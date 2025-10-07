@@ -496,29 +496,63 @@ impl RedisService {
 
     /// 列出所有任务
     pub async fn list_all_tasks(&self) -> Result<Vec<CrawlTask>, StorageError> {
+        tracing::debug!("开始列出所有任务: 获取Redis连接");
         let mut conn = self
             .pool
             .get()
             .await
-            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(错误 = %e, "获取Redis连接失败");
+                StorageError::RedisConnectionFailed(e.to_string())
+            })?;
 
         let pattern = "crawl:task:*";
+        tracing::debug!(模式 = %pattern, "执行KEYS命令");
         let keys: Vec<String> = redis::cmd("KEYS")
             .arg(pattern)
             .query_async(&mut *conn)
             .await
-            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(错误 = %e, "KEYS命令执行失败");
+                StorageError::CommandFailed(e.to_string())
+            })?;
+
+        tracing::debug!(键数量 = %keys.len(), "KEYS命令执行完成");
 
         let mut tasks = Vec::new();
-        for key in keys {
+        for (idx, key) in keys.iter().enumerate() {
+            tracing::trace!(索引 = %idx, 键 = %key, "处理键");
+
+            // 跳过cookies键
+            if key.ends_with(":cookies") {
+                tracing::trace!(键 = %key, "跳过cookies键");
+                continue;
+            }
+
             if let Some(task_id) = key.strip_prefix("crawl:task:") {
-                if let Ok(task) = self.load_task(task_id).await {
-                    tasks.push(task);
+                tracing::trace!(任务ID = %task_id, "加载任务");
+                match self.load_task(task_id).await {
+                    Ok(task) => {
+                        tracing::trace!(
+                            任务ID = %task_id,
+                            关键字 = %task.keyword,
+                            状态 = %task.status.as_str(),
+                            "任务加载成功"
+                        );
+                        tasks.push(task);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            任务ID = %task_id,
+                            错误 = %e,
+                            "加载任务失败,跳过"
+                        );
+                    }
                 }
             }
         }
 
-        tracing::debug!(任务数量 = %tasks.len(), "从Redis列出所有爬取任务");
+        tracing::info!(任务数量 = %tasks.len(), "从Redis列出所有爬取任务完成");
         Ok(tasks)
     }
 

@@ -835,16 +835,36 @@ pub async fn list_crawl_tasks(
     request: ListCrawlTasksRequest,
     state: State<'_, AppState>,
 ) -> Result<ListCrawlTasksResponse, CommandError> {
+    tracing::info!(
+        状态过滤 = ?request.status,
+        排序字段 = ?request.sort_by,
+        排序顺序 = ?request.sort_order,
+        "收到列出任务命令"
+    );
+
     // 1. 查询所有任务
+    tracing::debug!("开始从Redis查询所有任务");
     let mut tasks = state
         .redis
         .list_all_tasks()
         .await
-        .map_err(|e| CommandError::storage_error(&format!("查询任务列表失败: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(错误 = %e, "查询任务列表失败");
+            CommandError::storage_error(&format!("查询任务列表失败: {}", e))
+        })?;
+
+    tracing::debug!(任务总数 = %tasks.len(), "查询完成");
 
     // 2. 按状态过滤
     if let Some(ref status_filter) = request.status {
+        let before_count = tasks.len();
         tasks.retain(|task| task.status.as_str() == status_filter);
+        tracing::debug!(
+            过滤前 = %before_count,
+            过滤后 = %tasks.len(),
+            状态 = %status_filter,
+            "状态过滤完成"
+        );
     }
 
     // 3. 排序
@@ -866,6 +886,8 @@ pub async fn list_crawl_tasks(
         }
     });
 
+    tracing::debug!("排序完成");
+
     // 4. 转换为摘要
     let task_summaries: Vec<CrawlTaskSummary> = tasks
         .into_iter()
@@ -882,6 +904,8 @@ pub async fn list_crawl_tasks(
         .collect();
 
     let total = task_summaries.len();
+
+    tracing::info!(返回任务数 = %total, "列出任务命令返回");
 
     // 5. 返回响应
     Ok(ListCrawlTasksResponse {
