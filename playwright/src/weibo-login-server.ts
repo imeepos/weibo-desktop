@@ -17,6 +17,62 @@ import { WebSocketServer, WebSocket } from 'ws';
 const PORT = 9223;
 const QR_TIMEOUT_MS = 180000; // 180秒超时
 
+/**
+ * 微博VIP中心API响应格式
+ */
+interface VipCenterResponse {
+  code: number;
+  data?: {
+    uid?: string | number;
+    nickname?: string;
+  };
+  msg?: string;
+}
+
+/**
+ * 验证cookies并提取用户信息
+ *
+ * 调用微博VIP中心API获取真实的用户UID和昵称
+ */
+async function verifyCookiesAndExtractUserInfo(context: BrowserContext): Promise<{ valid: boolean; uid?: string; screen_name?: string; error?: string }> {
+  try {
+    const response = await context.request.get('https://vip.weibo.com/aj/vipcenter/user', {
+      headers: {
+        'accept': 'application/json, text/plain, */*',
+        'referer': 'https://vip.weibo.com/home',
+      },
+      timeout: 10000,
+    });
+
+    if (!response.ok()) {
+      return {
+        valid: false,
+        error: `HTTP ${response.status()}: Failed to access VIP center`,
+      };
+    }
+
+    const vipData: VipCenterResponse = await response.json();
+
+    if (vipData.code !== 100000 || !vipData.data?.uid) {
+      return {
+        valid: false,
+        error: vipData.msg || 'Invalid cookies or missing uid',
+      };
+    }
+
+    return {
+      valid: true,
+      uid: String(vipData.data.uid),
+      screen_name: vipData.data.nickname || 'Unknown',
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 let globalBrowser: Browser | null = null;
 
 // 会话管理: 跟踪活跃的 context 和超时定时器
@@ -156,12 +212,28 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
 
           console.log(`[${sessionId}] 提取到 ${cookies.length} 个 cookies`);
 
-          // 从 SUB cookie 提取 uid (格式: _2AxxxxUID)
-          const subCookie = cookieMap['SUB'] || '';
-          const uidMatch = subCookie.match(/_2A[A-Za-z0-9-_]+/);
-          const uid = uidMatch ? uidMatch[0] : '';
+          // 调用VIP API获取真实的UID和昵称
+          const verification = await verifyCookiesAndExtractUserInfo(context);
 
-          console.log(`[${sessionId}] 提取 UID: ${uid || '(未找到)'}`);
+          if (!verification.valid) {
+            console.error(`[${sessionId}] VIP API验证失败: ${verification.error}`);
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                error_type: 'ValidationFailed',
+                message: verification.error || 'Failed to verify cookies',
+                timestamp: Date.now()
+              }));
+            }
+            sessionClosed = true;
+            await cleanupSession(sessionId);
+            return;
+          }
+
+          const uid = verification.uid || '';
+          const screen_name = verification.screen_name || 'Unknown';
+
+          console.log(`[${sessionId}] 从VIP API提取 UID: ${uid}, 昵称: ${screen_name}`);
 
           if (ws.readyState === WebSocket.OPEN) {
             console.log(`[${sessionId}] 发送 WebSocket 消息: type=login_confirmed, uid=${uid}`);
@@ -171,7 +243,7 @@ async function generateQrcode(ws: WebSocket): Promise<void> {
               status: 'confirmed',
               cookies: cookieMap,
               uid: uid,
-              screen_name: '',  // 待验证时获取
+              screen_name: screen_name,
               timestamp: Date.now()
             }));
           }
