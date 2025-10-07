@@ -74,6 +74,7 @@ pub mod weibo_login_service_poc;
 #[cfg(feature = "rust-browser-poc")]
 pub mod websocket_server_poc;
 
+pub mod config_service;
 pub mod dependency_checker;
 pub mod installer_service;
 pub mod redis_service;
@@ -89,6 +90,7 @@ pub use weibo_login_service_poc::WeiboLoginService as WeiboLoginServicePoc;
 #[cfg(feature = "rust-browser-poc")]
 pub use websocket_server_poc::WebSocketServer as WebSocketServerPoc;
 
+pub use config_service::ConfigService;
 pub use dependency_checker::DependencyChecker;
 pub use installer_service::InstallerService;
 pub use redis_service::RedisService;

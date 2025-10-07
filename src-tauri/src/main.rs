@@ -58,6 +58,9 @@ fn main() {
             commands::playwright_commands::stop_playwright_server,
             commands::playwright_commands::check_playwright_server,
             commands::playwright_commands::get_playwright_logs,
+            commands::redis_commands::test_redis_connection,
+            commands::redis_commands::save_redis_config,
+            commands::redis_commands::load_redis_config,
         ])
         .setup(move |_app| {
             // 浏览器后端选择
