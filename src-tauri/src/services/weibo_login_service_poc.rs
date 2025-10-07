@@ -6,15 +6,15 @@
 //! - 提取 QR Code 图片
 //! - 提取登录成功后的 Cookies
 
-use chromiumoxide::page::Page;
+use crate::models::errors::ApiError;
+use crate::services::BrowserService;
+use base64::{engine::general_purpose, Engine as _};
 use chromiumoxide::cdp::browser_protocol::network::*;
+use chromiumoxide::page::Page;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use base64::{Engine as _, engine::general_purpose};
-use tracing::{info, warn, debug};
-use crate::models::errors::ApiError;
-use crate::services::BrowserService;
+use tracing::{debug, info, warn};
 
 const WEIBO_LOGIN_URL: &str = "https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog&disp=popup&url=https%3A%2F%2Fweibo.com%2Fnewlogin%3Ftabtype%3Dweibo%26gid%3D102803%26openLoginLayer%3D0%26url%3Dhttps%253A%252F%252Fweibo.com%252F&from=weibopro";
 
@@ -30,10 +30,10 @@ pub struct LoginSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum QrCodeStatus {
-    Waiting,      // 等待扫描
-    Scanned,      // 已扫描,等待确认
-    Confirmed,    // 已确认
-    Expired,      // 已过期
+    Waiting,   // 等待扫描
+    Scanned,   // 已扫描,等待确认
+    Confirmed, // 已确认
+    Expired,   // 已过期
 }
 
 /// 登录状态更新
@@ -85,9 +85,7 @@ impl WeiboLoginService {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
         // 尝试点击"扫描二维码登录"按钮
-        let click_result = page
-            .find_element("text=扫描二维码登录")
-            .await;
+        let click_result = page.find_element("text=扫描二维码登录").await;
 
         if let Ok(element) = click_result {
             info!("找到二维码登录按钮,尝试点击");
@@ -111,7 +109,11 @@ impl WeiboLoginService {
             debug!("尝试选择器: {}", selector);
             if let Ok(element) = page.find_element(selector).await {
                 if let Ok(Some(src)) = element.attribute("src").await {
-                    info!("找到二维码图片: selector={}, src_length={}", selector, src.len());
+                    info!(
+                        "找到二维码图片: selector={}, src_length={}",
+                        selector,
+                        src.len()
+                    );
                     qr_image_src = Some(src);
                     break;
                 }
@@ -151,7 +153,11 @@ impl WeiboLoginService {
             general_purpose::STANDARD.encode(&image_bytes)
         };
 
-        let session_id = format!("qr_{}_{}", chrono::Utc::now().timestamp_millis(), uuid::Uuid::new_v4());
+        let session_id = format!(
+            "qr_{}_{}",
+            chrono::Utc::now().timestamp_millis(),
+            uuid::Uuid::new_v4()
+        );
         let expires_at = chrono::Utc::now().timestamp_millis() + 180_000; // 3分钟
 
         info!("二维码生成成功: session_id={}", session_id);
@@ -239,10 +245,9 @@ impl WeiboLoginService {
                         info!("检测到登录成功 (资源已销毁),开始提取 cookies");
 
                         // 提取 cookies
-                        let cookies = page
-                            .get_cookies()
-                            .await
-                            .map_err(|e| ApiError::BrowserError(format!("获取 cookies 失败: {}", e)))?;
+                        let cookies = page.get_cookies().await.map_err(|e| {
+                            ApiError::BrowserError(format!("获取 cookies 失败: {}", e))
+                        })?;
 
                         let mut cookie_map = HashMap::new();
                         for cookie in cookies {

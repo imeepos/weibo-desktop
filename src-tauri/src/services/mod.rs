@@ -70,9 +70,9 @@
 #[cfg(feature = "rust-browser-poc")]
 pub mod browser_service_poc;
 #[cfg(feature = "rust-browser-poc")]
-pub mod weibo_login_service_poc;
-#[cfg(feature = "rust-browser-poc")]
 pub mod websocket_server_poc;
+#[cfg(feature = "rust-browser-poc")]
+pub mod weibo_login_service_poc;
 
 pub mod config_service;
 pub mod dependency_checker;
@@ -90,9 +90,9 @@ pub mod time_shard_service;
 #[cfg(feature = "rust-browser-poc")]
 pub use browser_service_poc::BrowserService as BrowserServicePoc;
 #[cfg(feature = "rust-browser-poc")]
-pub use weibo_login_service_poc::WeiboLoginService as WeiboLoginServicePoc;
-#[cfg(feature = "rust-browser-poc")]
 pub use websocket_server_poc::WebSocketServer as WebSocketServerPoc;
+#[cfg(feature = "rust-browser-poc")]
+pub use weibo_login_service_poc::WeiboLoginService as WeiboLoginServicePoc;
 
 pub use config_service::ConfigService;
 pub use dependency_checker::DependencyChecker;

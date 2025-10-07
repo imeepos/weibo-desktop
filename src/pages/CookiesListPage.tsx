@@ -40,7 +40,9 @@ export const CookiesListPage = () => {
   const viewCookies = async (uid: string) => {
     setError(null);
     try {
-      const cookies = await invoke<CookiesData>('query_cookies', { uid });
+      const cookies = await invoke<CookiesData>('query_cookies', {
+        request: { uid }
+      });
       setSelectedCookies(cookies);
     } catch (err) {
       const errorMsg = handleTauriError(err);

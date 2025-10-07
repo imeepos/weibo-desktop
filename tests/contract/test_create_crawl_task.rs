@@ -48,10 +48,7 @@ fn validate_event_start_time(event_start_time: &str) -> Result<chrono::DateTime<
 }
 
 /// 测试辅助函数: 检查cookies是否存在和是否过期
-async fn validate_cookies(
-    redis_service: &RedisService,
-    uid: &str,
-) -> Result<CookiesData, String> {
+async fn validate_cookies(redis_service: &RedisService, uid: &str) -> Result<CookiesData, String> {
     let cookies_data = redis_service
         .query_cookies(uid)
         .await
@@ -166,9 +163,7 @@ async fn test_create_task_success() {
     validate_keyword(&keyword).unwrap();
 
     // 创建任务 (会失败,因为尚未实现)
-    let result = std::panic::catch_unwind(|| {
-        CrawlTask::new(keyword.clone(), event_start_time)
-    });
+    let result = std::panic::catch_unwind(|| CrawlTask::new(keyword.clone(), event_start_time));
 
     // 预期失败 (todo!会panic)
     assert!(result.is_err());

@@ -2,7 +2,7 @@ use deadpool_redis::{Config, Pool, Runtime};
 use redis::AsyncCommands;
 use std::collections::HashMap;
 
-use crate::models::{CookiesData, StorageError, CrawlTask, CrawlCheckpoint, WeiboPost};
+use crate::models::{CookiesData, CrawlCheckpoint, CrawlTask, StorageError, WeiboPost};
 
 /// Redis服务
 ///
@@ -312,10 +312,7 @@ impl RedisService {
             ),
         ];
 
-        let fields_refs: Vec<(&str, &str)> = fields
-            .iter()
-            .map(|(k, v)| (*k, v.as_str()))
-            .collect();
+        let fields_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
 
         redis::pipe()
             .atomic()
@@ -388,10 +385,9 @@ impl RedisService {
 
         let redis_key = format!("crawl:task:{}:cookies", task_id);
 
-        let cookies_json: String = conn
-            .get(&redis_key)
-            .await
-            .map_err(|e| StorageError::NotFound(format!("任务{}的cookies不存在: {}", task_id, e)))?;
+        let cookies_json: String = conn.get(&redis_key).await.map_err(|e| {
+            StorageError::NotFound(format!("任务{}的cookies不存在: {}", task_id, e))
+        })?;
 
         let cookies: HashMap<String, String> = serde_json::from_str(&cookies_json)
             .map_err(|e| StorageError::SerializationError(e.to_string()))?;
@@ -561,10 +557,7 @@ impl RedisService {
             ("saved_at", checkpoint.saved_at.timestamp().to_string()),
         ];
 
-        let fields_refs: Vec<(&str, &str)> = fields
-            .iter()
-            .map(|(k, v)| (*k, v.as_str()))
-            .collect();
+        let fields_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
 
         redis::pipe()
             .atomic()
@@ -638,8 +631,7 @@ impl RedisService {
             .get("direction")
             .ok_or_else(|| StorageError::SerializationError("Missing direction field".into()))
             .and_then(|s| {
-                serde_json::from_str(s)
-                    .map_err(|e| StorageError::SerializationError(e.to_string()))
+                serde_json::from_str(s).map_err(|e| StorageError::SerializationError(e.to_string()))
             })?;
 
         let completed_shards = data
@@ -648,8 +640,7 @@ impl RedisService {
                 StorageError::SerializationError("Missing completed_shards field".into())
             })
             .and_then(|s| {
-                serde_json::from_str(s)
-                    .map_err(|e| StorageError::SerializationError(e.to_string()))
+                serde_json::from_str(s).map_err(|e| StorageError::SerializationError(e.to_string()))
             })?;
 
         let checkpoint = CrawlCheckpoint {
@@ -680,11 +671,7 @@ impl RedisService {
     ///    - Member: 序列化的WeiboPost JSON
     /// 2. 去重索引 - Set: `crawl:post_ids:{task_id}`
     ///    - Members: 所有帖子ID
-    pub async fn save_posts(
-        &self,
-        task_id: &str,
-        posts: &[WeiboPost],
-    ) -> Result<(), StorageError> {
+    pub async fn save_posts(&self, task_id: &str, posts: &[WeiboPost]) -> Result<(), StorageError> {
         if posts.is_empty() {
             return Ok(());
         }
@@ -805,9 +792,7 @@ impl RedisService {
     }
 
     /// 获取Redis连接 (测试辅助方法)
-    pub async fn get_connection(
-        &self,
-    ) -> Result<deadpool_redis::Connection, StorageError> {
+    pub async fn get_connection(&self) -> Result<deadpool_redis::Connection, StorageError> {
         self.pool
             .get()
             .await

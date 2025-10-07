@@ -331,9 +331,7 @@ impl From<std::io::Error> for DependencyError {
             std::io::ErrorKind::UnexpectedEof => {
                 DependencyError::CheckFailed(format!("Unexpected end of file: {}", err))
             }
-            _ => {
-                DependencyError::CheckFailed(format!("I/O error: {}", err))
-            }
+            _ => DependencyError::CheckFailed(format!("I/O error: {}", err)),
         }
     }
 }

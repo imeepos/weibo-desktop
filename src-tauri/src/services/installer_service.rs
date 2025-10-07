@@ -14,10 +14,10 @@
 //! 3. **平衡速度和可靠性**: 确保核心功能，优化体验
 
 use crate::models::{dependency::*, errors::*};
-use tokio::task::JoinSet;
-use tracing::{info, warn, error, debug};
 use std::time::Duration;
 use tauri::Emitter;
+use tokio::task::JoinSet;
+use tracing::{debug, error, info, warn};
 
 /// 安装服务
 pub struct InstallerService {
@@ -72,7 +72,11 @@ impl InstallerService {
         required: Vec<Dependency>,
         optional: Vec<Dependency>,
     ) -> Result<Vec<InstallationTask>, ApiError> {
-        info!("开始混合安装策略: 必需依赖 {} 个，可选依赖 {} 个", required.len(), optional.len());
+        info!(
+            "开始混合安装策略: 必需依赖 {} 个，可选依赖 {} 个",
+            required.len(),
+            optional.len()
+        );
 
         let mut all_tasks = Vec::new();
 
@@ -82,22 +86,29 @@ impl InstallerService {
         let required_count = required_deps.len();
 
         for (index, dep) in required_deps.into_iter().enumerate() {
-            info!("安装必需依赖 [{}/{}]: {} (优先级: {})",
-                  index + 1, required_count, dep.name, dep.install_priority);
+            info!(
+                "安装必需依赖 [{}/{}]: {} (优先级: {})",
+                index + 1,
+                required_count,
+                dep.name,
+                dep.install_priority
+            );
 
             match self.install_single_dependency(dep).await {
                 Ok(task) => {
                     let success = task.status == InstallStatus::Success;
 
                     if !success {
-                        let error_msg = task.error_message.clone()
+                        let error_msg = task
+                            .error_message
+                            .clone()
                             .unwrap_or_else(|| "未知错误".to_string());
                         let dependency_id = task.dependency_id.clone();
                         all_tasks.push(task);
                         error!("必需依赖安装失败，中断安装流程: {}", error_msg);
                         return Err(ApiError::InstallError {
                             error_type: InstallErrorType::PermissionDenied,
-                            details: format!("必需依赖 {} 安装失败: {}", dependency_id, error_msg)
+                            details: format!("必需依赖 {} 安装失败: {}", dependency_id, error_msg),
                         });
                     }
 
@@ -121,31 +132,29 @@ impl InstallerService {
             // 启动所有可选依赖安装任务
             for dep in optional {
                 let installer = self.clone(); // 克隆安装服务实例
-                join_set.spawn(async move {
-                    installer.install_single_dependency(dep).await
-                });
+                join_set.spawn(async move { installer.install_single_dependency(dep).await });
             }
 
             // 收集并行结果 (忽略失败，仅记录警告)
             while let Some(join_result) = join_set.join_next().await {
                 match join_result {
-                    Ok(task_result) => {
-                        match task_result {
-                            Ok(task) => {
-                                if task.status == InstallStatus::Success {
-                                    info!("可选依赖安装成功: {}", task.dependency_id);
-                                } else {
-                                    warn!("可选依赖安装失败: {} - {}",
-                                          task.dependency_id,
-                                          task.error_message.as_deref().unwrap_or("未知错误"));
-                                }
-                                all_tasks.push(task);
+                    Ok(task_result) => match task_result {
+                        Ok(task) => {
+                            if task.status == InstallStatus::Success {
+                                info!("可选依赖安装成功: {}", task.dependency_id);
+                            } else {
+                                warn!(
+                                    "可选依赖安装失败: {} - {}",
+                                    task.dependency_id,
+                                    task.error_message.as_deref().unwrap_or("未知错误")
+                                );
                             }
-                            Err(e) => {
-                                warn!("可选依赖安装任务异常: {}", e);
-                            }
+                            all_tasks.push(task);
                         }
-                    }
+                        Err(e) => {
+                            warn!("可选依赖安装任务异常: {}", e);
+                        }
+                    },
                     Err(join_error) => {
                         error!("可选依赖安装任务panic: {}", join_error);
                     }
@@ -172,7 +181,10 @@ impl InstallerService {
     /// # 返回值
     ///
     /// 返回安装任务的完整状态信息
-    async fn install_single_dependency(&self, dep: Dependency) -> Result<InstallationTask, ApiError> {
+    async fn install_single_dependency(
+        &self,
+        dep: Dependency,
+    ) -> Result<InstallationTask, ApiError> {
         let mut task = InstallationTask::new(dep.id.clone());
 
         info!("开始安装依赖: {} ({})", dep.name, dep.id);
@@ -182,38 +194,35 @@ impl InstallerService {
         if !dep.auto_installable {
             let error_msg = format!("依赖 {} 不支持自动安装，请参考手动安装指南", dep.name);
             warn!("{}", error_msg);
-            task.mark_failed(
-                InstallErrorType::UnsupportedOperation,
-                error_msg.clone()
-            );
+            task.mark_failed(InstallErrorType::UnsupportedOperation, error_msg.clone());
             return Err(ApiError::InstallError {
                 error_type: InstallErrorType::UnsupportedOperation,
-                details: error_msg
+                details: error_msg,
             });
         }
 
         // 获取安装命令
-        let install_command = dep.install_command.as_ref()
-            .ok_or_else(|| {
-                let error_msg = format!("依赖 {} 缺少安装命令", dep.name);
-                error!("{}", error_msg);
-                ApiError::InstallError {
-                    error_type: InstallErrorType::InvalidInput,
-                    details: error_msg
-                }
-            })?;
+        let install_command = dep.install_command.as_ref().ok_or_else(|| {
+            let error_msg = format!("依赖 {} 缺少安装命令", dep.name);
+            error!("{}", error_msg);
+            ApiError::InstallError {
+                error_type: InstallErrorType::InvalidInput,
+                details: error_msg,
+            }
+        })?;
 
         task.update_progress(
             InstallStatus::Installing,
             50,
-            format!("执行安装命令: {}", install_command)
+            format!("执行安装命令: {}", install_command),
         );
 
         // 执行安装命令 (带超时控制)
         let install_result = tokio::time::timeout(
             self.install_timeout,
-            self.execute_install_command(install_command)
-        ).await;
+            self.execute_install_command(install_command),
+        )
+        .await;
 
         match install_result {
             Ok(Ok(output)) => {
@@ -221,7 +230,7 @@ impl InstallerService {
                 task.update_progress(
                     InstallStatus::Installing,
                     80,
-                    "安装命令执行完成，正在验证...".to_string()
+                    "安装命令执行完成，正在验证...".to_string(),
                 );
 
                 // TODO: 这里应该验证安装结果
@@ -233,25 +242,19 @@ impl InstallerService {
             Ok(Err(e)) => {
                 let error_msg = format!("安装命令执行失败: {}", e);
                 error!("{}", error_msg);
-                task.mark_failed(
-                    InstallErrorType::CommandFailed,
-                    error_msg.clone()
-                );
+                task.mark_failed(InstallErrorType::CommandFailed, error_msg.clone());
                 Err(ApiError::InstallError {
                     error_type: InstallErrorType::CommandFailed,
-                    details: error_msg
+                    details: error_msg,
                 })
             }
             Err(_) => {
                 let error_msg = format!("安装超时 ({} 秒)", self.install_timeout.as_secs());
                 error!("{}", error_msg);
-                task.mark_failed(
-                    InstallErrorType::TimeoutExpired,
-                    error_msg.clone()
-                );
+                task.mark_failed(InstallErrorType::TimeoutExpired, error_msg.clone());
                 Err(ApiError::InstallError {
                     error_type: InstallErrorType::TimeoutExpired,
-                    details: error_msg
+                    details: error_msg,
                 })
             }
         }
@@ -281,18 +284,21 @@ impl InstallerService {
                 error!("命令执行失败: {}", e);
                 ApiError::InstallError {
                     error_type: InstallErrorType::CommandFailed,
-                    details: format!("执行命令失败: {}", e)
+                    details: format!("执行命令失败: {}", e),
                 }
             })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            let error_msg = format!("命令返回错误状态 {}: {}",
-                                   output.status.code().unwrap_or(-1), stderr);
+            let error_msg = format!(
+                "命令返回错误状态 {}: {}",
+                output.status.code().unwrap_or(-1),
+                stderr
+            );
             error!("{}", error_msg);
             return Err(ApiError::InstallError {
                 error_type: InstallErrorType::CommandFailed,
-                details: error_msg
+                details: error_msg,
             });
         }
 
@@ -331,7 +337,9 @@ impl InstallerService {
             let checker = crate::services::DependencyChecker::new();
             match checker.check_dependency(dep).await {
                 Ok(result) if result.is_satisfied() => {
-                    let version = result.detected_version.unwrap_or_else(|| "unknown".to_string());
+                    let version = result
+                        .detected_version
+                        .unwrap_or_else(|| "unknown".to_string());
                     info!("依赖 {} 已满足 (版本: {})，跳过安装", dep.name, version);
                     return Err(DependencyError::AlreadySatisfied(dep.id.clone(), version));
                 }
@@ -348,9 +356,10 @@ impl InstallerService {
         // 克隆必要的数据用于异步任务
         let dependency_id = dep.id.clone();
         let dependency_name = dep.name.clone();
-        let install_command = dep.install_command.clone().ok_or_else(|| {
-            DependencyError::CheckFailed("缺少安装命令".to_string())
-        })?;
+        let install_command = dep
+            .install_command
+            .clone()
+            .ok_or_else(|| DependencyError::CheckFailed("缺少安装命令".to_string()))?;
         let app_handle = app.clone();
         let task_id = task.task_id;
 
@@ -362,7 +371,8 @@ impl InstallerService {
                 dependency_id,
                 dependency_name,
                 install_command,
-            ).await;
+            )
+            .await;
         });
 
         info!("安装任务已创建: {} (ID: {})", dep.name, task_id);
@@ -377,7 +387,10 @@ impl InstallerService {
         dependency_name: String,
         install_command: String,
     ) {
-        info!("开始执行安装任务: {} (命令: {})", dependency_name, install_command);
+        info!(
+            "开始执行安装任务: {} (命令: {})",
+            dependency_name, install_command
+        );
 
         // 初始任务状态
         let mut task = InstallationTask::new(dependency_id.clone());
@@ -394,7 +407,8 @@ impl InstallerService {
                 &mut task,
                 InstallErrorType::InvalidInput,
                 "无效的安装命令".to_string(),
-            ).await;
+            )
+            .await;
             return;
         }
 
@@ -414,7 +428,7 @@ impl InstallerService {
         task.update_progress(
             InstallStatus::Installing,
             30,
-            format!("执行安装命令: {}", install_command)
+            format!("执行安装命令: {}", install_command),
         );
         Self::emit_progress_event(&app_handle, &task).await;
 
@@ -427,12 +441,8 @@ impl InstallerService {
             Err(e) => {
                 let error_type = Self::classify_command_error(&e);
                 let error_msg = format!("执行安装命令失败: {}", e);
-                Self::handle_installation_error(
-                    &app_handle,
-                    &mut task,
-                    error_type,
-                    error_msg,
-                ).await;
+                Self::handle_installation_error(&app_handle, &mut task, error_type, error_msg)
+                    .await;
                 return;
             }
         };
@@ -454,21 +464,13 @@ impl InstallerService {
 
             // 5. 捕获5种错误类型
             let error_type = Self::classify_installation_error(&error_output);
-            Self::handle_installation_error(
-                &app_handle,
-                &mut task,
-                error_type,
-                error_message,
-            ).await;
+            Self::handle_installation_error(&app_handle, &mut task, error_type, error_message)
+                .await;
             return;
         }
 
         // 阶段4: 验证安装结果
-        task.update_progress(
-            InstallStatus::Installing,
-            90,
-            "验证安装结果...".to_string(),
-        );
+        task.update_progress(InstallStatus::Installing, 90, "验证安装结果...".to_string());
         Self::emit_progress_event(&app_handle, &task).await;
 
         // 6. 安装完成后重新调用检测服务验证
@@ -496,8 +498,9 @@ impl InstallerService {
     fn classify_command_error(error: &tokio::io::Error) -> InstallErrorType {
         match error.kind() {
             tokio::io::ErrorKind::PermissionDenied => InstallErrorType::PermissionDenied,
-            tokio::io::ErrorKind::ConnectionRefused |
-            tokio::io::ErrorKind::TimedOut => InstallErrorType::NetworkError,
+            tokio::io::ErrorKind::ConnectionRefused | tokio::io::ErrorKind::TimedOut => {
+                InstallErrorType::NetworkError
+            }
             tokio::io::ErrorKind::NotFound => InstallErrorType::UnknownError,
             _ => InstallErrorType::UnknownError,
         }
@@ -508,38 +511,42 @@ impl InstallerService {
         let error_lower = error_output.to_lowercase();
 
         // 网络错误
-        if error_lower.contains("network") ||
-           error_lower.contains("connection") ||
-           error_lower.contains("timeout") ||
-           error_lower.contains("dns") ||
-           error_lower.contains("etimedout") ||
-           error_lower.contains("enotfound") {
+        if error_lower.contains("network")
+            || error_lower.contains("connection")
+            || error_lower.contains("timeout")
+            || error_lower.contains("dns")
+            || error_lower.contains("etimedout")
+            || error_lower.contains("enotfound")
+        {
             return InstallErrorType::NetworkError;
         }
 
         // 权限错误
-        if error_lower.contains("permission denied") ||
-           error_lower.contains("access denied") ||
-           error_lower.contains("eacces") ||
-           error_lower.contains("eperm") ||
-           error_lower.contains("unauthorized") {
+        if error_lower.contains("permission denied")
+            || error_lower.contains("access denied")
+            || error_lower.contains("eacces")
+            || error_lower.contains("eperm")
+            || error_lower.contains("unauthorized")
+        {
             return InstallErrorType::PermissionDenied;
         }
 
         // 磁盘空间错误
-        if error_lower.contains("disk space") ||
-           error_lower.contains("no space") ||
-           error_lower.contains("enospc") ||
-           error_lower.contains("insufficient space") {
+        if error_lower.contains("disk space")
+            || error_lower.contains("no space")
+            || error_lower.contains("enospc")
+            || error_lower.contains("insufficient space")
+        {
             return InstallErrorType::DiskSpaceError;
         }
 
         // 版本冲突
-        if error_lower.contains("version") ||
-           error_lower.contains("conflict") ||
-           error_lower.contains("already exists") ||
-           error_lower.contains("version mismatch") ||
-           error_lower.contains("incompatible") {
+        if error_lower.contains("version")
+            || error_lower.contains("conflict")
+            || error_lower.contains("already exists")
+            || error_lower.contains("version mismatch")
+            || error_lower.contains("incompatible")
+        {
             return InstallErrorType::VersionConflict;
         }
 
@@ -591,8 +598,7 @@ impl InstallerService {
 
         // 根据依赖ID提供默认安装指南
         match dependency.id.as_str() {
-            "nodejs" => {
-                r##"## Node.js 安装指南
+            "nodejs" => r##"## Node.js 安装指南
 
 ### Windows
 1. 访问 [Node.js官网](https://nodejs.org/)
@@ -621,10 +627,9 @@ npm --version
 ```
 
 **版本要求**: >= 20.0.0
-"##.to_string()
-            }
-            "pnpm" => {
-                r##"## pnpm 安装指南
+"##
+            .to_string(),
+            "pnpm" => r##"## pnpm 安装指南
 
 ### 全局安装（推荐）
 ```bash
@@ -648,10 +653,9 @@ iwr https://get.pnpm.io/install.ps1 -useb | iex
 ```
 
 **用途**: 快速、节省磁盘空间的包管理器
-"##.to_string()
-            }
-            "redis" => {
-                r##"## Redis 安装指南
+"##
+            .to_string(),
+            "redis" => r##"## Redis 安装指南
 
 ### Windows
 1. 下载 [Redis for Windows](https://github.com/microsoftarchive/redis/releases)
@@ -685,10 +689,9 @@ redis-cli ping
 ```
 
 **端口**: 6379（默认）
-"##.to_string()
-            }
-            "playwright-browsers" => {
-                r##"## Playwright 浏览器安装指南
+"##
+            .to_string(),
+            "playwright-browsers" => r##"## Playwright 浏览器安装指南
 
 ### 自动安装（推荐）
 ```bash
@@ -732,8 +735,8 @@ sudo yum install -y nss atk at-spi2-atk gtk3
 ```
 
 **用途**: 自动化测试和网页抓取所需的浏览器引擎
-"##.to_string()
-            }
+"##
+            .to_string(),
             _ => {
                 format!("## {} 手动安装指南\n\n暂无可用的安装指南，请访问官方文档获取最新信息。\n\n**版本要求**: {}\n**用途**: {}",
                        dependency.name,
@@ -757,7 +760,7 @@ sudo yum install -y nss atk at-spi2-atk gtk3
                 error!("健康检查失败: {}", e);
                 ApiError::InstallError {
                     error_type: InstallErrorType::CommandFailed,
-                    details: format!("无法执行系统命令: {}", e)
+                    details: format!("无法执行系统命令: {}", e),
                 }
             })?;
 
@@ -769,7 +772,7 @@ sudo yum install -y nss atk at-spi2-atk gtk3
             error!("{}", error_msg);
             Err(ApiError::InstallError {
                 error_type: InstallErrorType::CommandFailed,
-                details: error_msg.to_string()
+                details: error_msg.to_string(),
             })
         }
     }

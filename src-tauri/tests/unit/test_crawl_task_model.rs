@@ -73,7 +73,8 @@ fn test_transition_incremental_crawling_to_paused() {
     let mut task = CrawlTask::new("国庆".to_string(), Utc::now() - Duration::days(7));
     task.transition_to(CrawlStatus::HistoryCrawling).unwrap();
     task.transition_to(CrawlStatus::HistoryCompleted).unwrap();
-    task.transition_to(CrawlStatus::IncrementalCrawling).unwrap();
+    task.transition_to(CrawlStatus::IncrementalCrawling)
+        .unwrap();
 
     let result = task.transition_to(CrawlStatus::Paused);
 
@@ -86,7 +87,8 @@ fn test_transition_incremental_crawling_to_failed() {
     let mut task = CrawlTask::new("国庆".to_string(), Utc::now() - Duration::days(7));
     task.transition_to(CrawlStatus::HistoryCrawling).unwrap();
     task.transition_to(CrawlStatus::HistoryCompleted).unwrap();
-    task.transition_to(CrawlStatus::IncrementalCrawling).unwrap();
+    task.transition_to(CrawlStatus::IncrementalCrawling)
+        .unwrap();
 
     let result = task.transition_to(CrawlStatus::Failed);
 
@@ -111,7 +113,8 @@ fn test_transition_paused_to_incremental_crawling() {
     let mut task = CrawlTask::new("国庆".to_string(), Utc::now() - Duration::days(7));
     task.transition_to(CrawlStatus::HistoryCrawling).unwrap();
     task.transition_to(CrawlStatus::HistoryCompleted).unwrap();
-    task.transition_to(CrawlStatus::IncrementalCrawling).unwrap();
+    task.transition_to(CrawlStatus::IncrementalCrawling)
+        .unwrap();
     task.transition_to(CrawlStatus::Paused).unwrap();
 
     let result = task.transition_to(CrawlStatus::IncrementalCrawling);
@@ -205,7 +208,8 @@ fn test_illegal_transition_incremental_crawling_to_history_crawling() {
     let mut task = CrawlTask::new("国庆".to_string(), Utc::now() - Duration::days(7));
     task.transition_to(CrawlStatus::HistoryCrawling).unwrap();
     task.transition_to(CrawlStatus::HistoryCompleted).unwrap();
-    task.transition_to(CrawlStatus::IncrementalCrawling).unwrap();
+    task.transition_to(CrawlStatus::IncrementalCrawling)
+        .unwrap();
 
     let result = task.transition_to(CrawlStatus::HistoryCrawling);
 
@@ -537,7 +541,10 @@ fn test_status_as_str() {
     assert_eq!(CrawlStatus::Created.as_str(), "Created");
     assert_eq!(CrawlStatus::HistoryCrawling.as_str(), "HistoryCrawling");
     assert_eq!(CrawlStatus::HistoryCompleted.as_str(), "HistoryCompleted");
-    assert_eq!(CrawlStatus::IncrementalCrawling.as_str(), "IncrementalCrawling");
+    assert_eq!(
+        CrawlStatus::IncrementalCrawling.as_str(),
+        "IncrementalCrawling"
+    );
     assert_eq!(CrawlStatus::Paused.as_str(), "Paused");
     assert_eq!(CrawlStatus::Failed.as_str(), "Failed");
 }

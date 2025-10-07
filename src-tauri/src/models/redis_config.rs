@@ -142,7 +142,13 @@ impl RedisConfig {
 
         let db = self.database.unwrap_or(0);
 
-        format!("redis://{}{}{}/{}", auth, self.host, format_port(self.port), db)
+        format!(
+            "redis://{}{}{}/{}",
+            auth,
+            self.host,
+            format_port(self.port),
+            db
+        )
     }
 
     /// 获取配置摘要 (用于日志,不记录密码)
@@ -248,12 +254,9 @@ mod tests {
 
     #[test]
     fn test_to_connection_url_with_password() {
-        let config = RedisConfig::new("localhost".to_string(), 6379)
-            .with_password("secret123".to_string());
-        assert_eq!(
-            config.to_connection_url(),
-            "redis://:secret123@localhost/0"
-        );
+        let config =
+            RedisConfig::new("localhost".to_string(), 6379).with_password("secret123".to_string());
+        assert_eq!(config.to_connection_url(), "redis://:secret123@localhost/0");
     }
 
     #[test]
@@ -285,8 +288,8 @@ mod tests {
 
     #[test]
     fn test_summary_for_logging_with_password() {
-        let config = RedisConfig::new("localhost".to_string(), 6379)
-            .with_password("secret".to_string());
+        let config =
+            RedisConfig::new("localhost".to_string(), 6379).with_password("secret".to_string());
         let summary = config.summary_for_logging();
         assert_eq!(summary, "localhost:6379/0 (authenticated)");
         assert!(!summary.contains("secret"));

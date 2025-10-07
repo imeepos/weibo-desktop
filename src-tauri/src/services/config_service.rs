@@ -55,9 +55,9 @@ impl ConfigService {
                 }
 
                 // 解析 KEY=VALUE
-                trimmed.split_once('=').map(|(k, v)| {
-                    (k.trim().to_string(), v.trim().to_string())
-                })
+                trimmed
+                    .split_once('=')
+                    .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
             })
             .collect()
     }

@@ -9,7 +9,7 @@
 use crate::models::dependency::*;
 use crate::models::errors::DependencyError;
 use crate::services::{ConfigService, DependencyChecker, InstallerService};
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 
 /// 获取预定义的依赖项列表
 fn get_predefined_dependencies() -> Vec<Dependency> {
@@ -102,15 +102,12 @@ pub async fn check_dependencies(
 
     let dependencies = get_predefined_dependencies();
 
-    let results = DependencyChecker::check_all_dependencies(
-        app_handle,
-        dependencies,
-    )
-    .await
-    .map_err(|e| {
-        error!("依赖检测失败: {}", e);
-        format!("依赖检测失败: {}", e)
-    })?;
+    let results = DependencyChecker::check_all_dependencies(app_handle, dependencies)
+        .await
+        .map_err(|e| {
+            error!("依赖检测失败: {}", e);
+            format!("依赖检测失败: {}", e)
+        })?;
 
     info!("依赖检测完成,共检测 {} 个依赖", results.len());
     Ok(results)
@@ -142,7 +139,10 @@ pub async fn install_dependency(
         .install_dependency(app_handle, dependency, force)
         .await?;
 
-    info!("安装任务已创建: {} (task_id: {})", dependency_id, task.task_id);
+    info!(
+        "安装任务已创建: {} (task_id: {})",
+        dependency_id, task.task_id
+    );
     Ok(task)
 }
 
@@ -161,9 +161,7 @@ pub async fn query_dependency_status(
             .into_iter()
             .filter(|dep| dep.id == id)
             .filter_map(|dep| {
-                futures::executor::block_on(async {
-                    checker.check_dependency(&dep).await.ok()
-                })
+                futures::executor::block_on(async { checker.check_dependency(&dep).await.ok() })
             })
             .collect()
     } else {
@@ -191,15 +189,12 @@ pub async fn trigger_manual_check(
 
     let dependencies = get_predefined_dependencies();
 
-    let results = DependencyChecker::check_all_dependencies(
-        app_handle,
-        dependencies,
-    )
-    .await
-    .map_err(|e| {
-        error!("手动检测失败: {}", e);
-        DependencyError::CheckFailed(format!("手动检测失败: {}", e))
-    })?;
+    let results = DependencyChecker::check_all_dependencies(app_handle, dependencies)
+        .await
+        .map_err(|e| {
+            error!("手动检测失败: {}", e);
+            DependencyError::CheckFailed(format!("手动检测失败: {}", e))
+        })?;
 
     let satisfied_count = results.iter().filter(|r| r.is_satisfied()).count();
     info!(

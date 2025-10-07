@@ -219,11 +219,7 @@ pub async fn check_playwright_server() -> Result<PlaywrightStatus, PlaywrightErr
     };
 
     // 健康检查 (HTTP请求)
-    let healthy = if running {
-        check_health().await
-    } else {
-        false
-    };
+    let healthy = if running { check_health().await } else { false };
 
     tracing::debug!(
         running = %running,
@@ -286,11 +282,12 @@ fn read_pid() -> Result<u32, PlaywrightError> {
     }
 
     let content = fs::read_to_string(PID_FILE)?;
-    let pid = content.trim().parse::<u32>().map_err(|_| {
-        PlaywrightError::IoError {
+    let pid = content
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| PlaywrightError::IoError {
             message: "PID格式无效".to_string(),
-        }
-    })?;
+        })?;
 
     Ok(pid)
 }

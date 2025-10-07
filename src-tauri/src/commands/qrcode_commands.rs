@@ -1,11 +1,11 @@
-use crate::models::{ApiError, QrCodeStatus, CookiesData, parse_qr_status};
 use crate::models::events::{LoginErrorEvent, LoginStatusEvent};
+use crate::models::{parse_qr_status, ApiError, CookiesData, QrCodeStatus};
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
-use futures_util::StreamExt;
 
 /// 生成二维码响应
 ///
@@ -46,7 +46,7 @@ pub struct QrCodeResponse {
 #[tauri::command]
 pub async fn generate_qrcode(
     app: AppHandle,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
 ) -> Result<QrCodeResponse, ApiError> {
     tracing::info!("生成二维码并启动监控");
 
@@ -77,7 +77,9 @@ pub async fn generate_qrcode(
 
     // 注册到会话管理器 (自动取消旧任务)
     let abort_handle = monitor_task.abort_handle();
-    session_manager.set_current_session(qr_id_for_manager, abort_handle).await;
+    session_manager
+        .set_current_session(qr_id_for_manager, abort_handle)
+        .await;
 
     Ok(QrCodeResponse {
         qr_id: session.qr_id,
@@ -101,8 +103,8 @@ async fn monitor_login(
     redis: Arc<crate::services::RedisService>,
 ) {
     use crate::services::weibo_api::WsEvent;
-    use tokio_tungstenite::tungstenite::Message;
     use tokio::time::{sleep, Duration};
+    use tokio_tungstenite::tungstenite::Message;
 
     tracing::info!(二维码ID = %qr_id, "登录监控已启动");
 
@@ -129,16 +131,40 @@ async fn monitor_login(
                     match serde_json::from_str::<WsEvent>(&text) {
                         Ok(WsEvent::QrcodeGenerated { .. }) => continue,
                         Ok(WsEvent::Pong { .. }) => continue,
-                        Ok(WsEvent::StatusUpdate { retcode, msg, data, .. }) => {
-                            Ok((parse_qr_status(retcode), None, None, None, Some(retcode), Some(msg), data))
-                        }
-                        Ok(WsEvent::LoginConfirmed { cookies, uid, screen_name, .. }) => {
-                            Ok((QrCodeStatus::Confirmed, Some(uid), Some(cookies), Some(screen_name), None, None, None))
-                        }
-                        Ok(WsEvent::Error { error_type, message, .. }) => {
-                            Err(ApiError::QrCodeGenerationFailed(format!("{}: {}", error_type, message)))
-                        }
-                        Err(e) => Err(ApiError::JsonParseFailed(e.to_string()))
+                        Ok(WsEvent::StatusUpdate {
+                            retcode, msg, data, ..
+                        }) => Ok((
+                            parse_qr_status(retcode),
+                            None,
+                            None,
+                            None,
+                            Some(retcode),
+                            Some(msg),
+                            data,
+                        )),
+                        Ok(WsEvent::LoginConfirmed {
+                            cookies,
+                            uid,
+                            screen_name,
+                            ..
+                        }) => Ok((
+                            QrCodeStatus::Confirmed,
+                            Some(uid),
+                            Some(cookies),
+                            Some(screen_name),
+                            None,
+                            None,
+                            None,
+                        )),
+                        Ok(WsEvent::Error {
+                            error_type,
+                            message,
+                            ..
+                        }) => Err(ApiError::QrCodeGenerationFailed(format!(
+                            "{}: {}",
+                            error_type, message
+                        ))),
+                        Err(e) => Err(ApiError::JsonParseFailed(e.to_string())),
                     }
                 }
                 Ok(Message::Close(_)) => {
@@ -159,7 +185,9 @@ async fn monitor_login(
                     match status {
                         QrCodeStatus::Confirmed => {
                             tracing::debug!(二维码ID = %qr_id, "处理Confirmed状态");
-                            if let (Some(uid), Some(cookies), Some(screen_name)) = (uid_opt, cookies_opt, screen_name_opt) {
+                            if let (Some(uid), Some(cookies), Some(screen_name)) =
+                                (uid_opt, cookies_opt, screen_name_opt)
+                            {
                                 // WebSocket已经通过VIP API验证,直接使用返回的UID
                                 // 不需要二次验证 - VIP API是唯一可信的数据源
                                 let cookies_data = CookiesData::new(uid.clone(), cookies)
@@ -167,7 +195,12 @@ async fn monitor_login(
 
                                 if let Err(e) = redis.save_cookies(&cookies_data).await {
                                     tracing::error!(二维码ID = %qr_id, 错误 = ?e, "保存cookies失败");
-                                    emit_error(&app, &qr_id, "StorageError", format!("保存Cookies失败: {}", e));
+                                    emit_error(
+                                        &app,
+                                        &qr_id,
+                                        "StorageError",
+                                        format!("保存Cookies失败: {}", e),
+                                    );
                                     should_exit = true;
                                     break;
                                 }
@@ -175,7 +208,11 @@ async fn monitor_login(
                                 tracing::info!(二维码ID = %qr_id, uid = %uid, "Cookies已保存");
 
                                 // 推送confirmed事件
-                                let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
+                                let event = LoginStatusEvent::new(
+                                    qr_id.clone(),
+                                    QrCodeStatus::Confirmed,
+                                    Some(cookies_data),
+                                );
                                 let _ = app.emit("login_status_update", event);
                                 tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
                             }
@@ -184,13 +221,27 @@ async fn monitor_login(
                         }
                         QrCodeStatus::Scanned => {
                             tracing::debug!(二维码ID = %qr_id, "处理Scanned状态");
-                            let event = LoginStatusEvent::with_raw_data(qr_id.clone(), QrCodeStatus::Scanned, None, retcode, msg, data);
+                            let event = LoginStatusEvent::with_raw_data(
+                                qr_id.clone(),
+                                QrCodeStatus::Scanned,
+                                None,
+                                retcode,
+                                msg,
+                                data,
+                            );
                             let _ = app.emit("login_status_update", event);
                             tracing::debug!(二维码ID = %qr_id, "Scanned事件已发送至前端");
                         }
                         QrCodeStatus::Rejected | QrCodeStatus::Expired => {
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理终止状态");
-                            let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
+                            let event = LoginStatusEvent::with_raw_data(
+                                qr_id.clone(),
+                                status,
+                                None,
+                                retcode,
+                                msg,
+                                data,
+                            );
                             let _ = app.emit("login_status_update", event);
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "终止状态事件已发送至前端");
                             should_exit = true;
@@ -198,7 +249,14 @@ async fn monitor_login(
                         }
                         _ => {
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "处理其他状态");
-                            let event = LoginStatusEvent::with_raw_data(qr_id.clone(), status, None, retcode, msg, data);
+                            let event = LoginStatusEvent::with_raw_data(
+                                qr_id.clone(),
+                                status,
+                                None,
+                                retcode,
+                                msg,
+                                data,
+                            );
                             let _ = app.emit("login_status_update", event);
                             tracing::debug!(二维码ID = %qr_id, 状态 = ?status, "状态事件已发送至前端");
                         }
@@ -281,16 +339,16 @@ async fn reconnect_websocket() -> Result<crate::services::weibo_api::WsStream, A
     use tokio_tungstenite::connect_async;
 
     let ws_url = "ws://localhost:9223";
-    let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| {
-        ApiError::NetworkFailed(format!("WebSocket重连失败: {}", e))
-    })?;
+    let (ws_stream, _) = connect_async(ws_url)
+        .await
+        .map_err(|e| ApiError::NetworkFailed(format!("WebSocket重连失败: {}", e)))?;
 
     Ok(ws_stream)
 }
 
 /// 发送连接断开事件到前端
 fn emit_connection_lost(app: &AppHandle, qr_id: &str, reason: &str) {
-    use serde::{Serialize};
+    use serde::Serialize;
 
     #[derive(Serialize, Clone)]
     struct ConnectionEvent {
@@ -310,7 +368,7 @@ fn emit_connection_lost(app: &AppHandle, qr_id: &str, reason: &str) {
 
 /// 发送连接恢复事件到前端
 fn emit_connection_restored(app: &AppHandle, qr_id: &str) {
-    use serde::{Serialize};
+    use serde::Serialize;
 
     #[derive(Serialize, Clone)]
     struct ConnectionEvent {

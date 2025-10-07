@@ -76,10 +76,10 @@ async fn mock_query_cookies(
         .and_then(|s| s.parse::<i64>().ok())
         .ok_or_else(|| QueryCookiesError::MissingField("validated_at".to_string()))?;
 
-    let fetched_at = DateTime::from_timestamp(fetched_at_ts, 0)
-        .ok_or(QueryCookiesError::InvalidTimestamp)?;
-    let validated_at = DateTime::from_timestamp(validated_at_ts, 0)
-        .ok_or(QueryCookiesError::InvalidTimestamp)?;
+    let fetched_at =
+        DateTime::from_timestamp(fetched_at_ts, 0).ok_or(QueryCookiesError::InvalidTimestamp)?;
+    let validated_at =
+        DateTime::from_timestamp(validated_at_ts, 0).ok_or(QueryCookiesError::InvalidTimestamp)?;
 
     // 5. 获取可选字段
     let screen_name = data.get("screen_name").cloned();
@@ -113,11 +113,7 @@ mod tests {
             .await
             .unwrap();
         redis
-            .hset(
-                &redis_key,
-                "fetched_at",
-                Utc::now().timestamp().to_string(),
-            )
+            .hset(&redis_key, "fetched_at", Utc::now().timestamp().to_string())
             .await
             .unwrap();
         redis
@@ -281,7 +277,11 @@ mod tests {
 
         // 只插入cookies,不插入时间戳
         redis
-            .hset(&redis_key, "cookies", serde_json::to_string(&cookies).unwrap())
+            .hset(
+                &redis_key,
+                "cookies",
+                serde_json::to_string(&cookies).unwrap(),
+            )
             .await
             .unwrap();
 

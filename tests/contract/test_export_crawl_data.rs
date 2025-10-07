@@ -4,7 +4,6 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 /// 导出请求
 #[derive(Debug, Serialize, Deserialize)]
@@ -249,15 +248,13 @@ mod tests {
         let timestamp = "1696204800";
 
         // JSON格式
-        let json_filename = format!("weibo_{}_{}.json",
-            &task_id[..8], timestamp);
+        let json_filename = format!("weibo_{}_{}.json", &task_id[..8], timestamp);
         assert!(json_filename.starts_with("weibo_"));
         assert!(json_filename.ends_with(".json"));
         assert!(json_filename.contains(timestamp));
 
         // CSV格式
-        let csv_filename = format!("weibo_{}_{}.csv",
-            &task_id[..8], timestamp);
+        let csv_filename = format!("weibo_{}_{}.csv", &task_id[..8], timestamp);
         assert!(csv_filename.starts_with("weibo_"));
         assert!(csv_filename.ends_with(".csv"));
         assert!(csv_filename.contains(timestamp));

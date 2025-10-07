@@ -9,12 +9,12 @@
 //! Client -> Server: { type: 'generate_qrcode' } | { type: 'ping' }
 //! Server -> Client: { type: 'qrcode_generated' | 'status_update' | 'login_confirmed' | 'error' | 'pong' }
 
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 use crate::services::WeiboLoginService;
 
@@ -65,9 +65,7 @@ enum ServerMessage {
         timestamp: i64,
     },
     #[serde(rename = "pong")]
-    Pong {
-        timestamp: i64,
-    },
+    Pong { timestamp: i64 },
 }
 
 /// WebSocket 服务器

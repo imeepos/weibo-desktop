@@ -3,6 +3,7 @@ use chrono::{DateTime, Timelike, Utc};
 /// 向下取整到小时边界
 ///
 /// 例: 2025-10-07 12:34:56 → 2025-10-07 12:00:00
+#[allow(dead_code)]
 pub fn floor_to_hour(dt: DateTime<Utc>) -> DateTime<Utc> {
     dt.date_naive()
         .and_hms_opt(dt.hour(), 0, 0)
@@ -14,6 +15,7 @@ pub fn floor_to_hour(dt: DateTime<Utc>) -> DateTime<Utc> {
 ///
 /// 例: 2025-10-07 12:34:56 → 2025-10-07 13:00:00
 /// 例: 2025-10-07 12:00:00 → 2025-10-07 12:00:00 (已对齐则保持不变)
+#[allow(dead_code)]
 pub fn ceil_to_hour(dt: DateTime<Utc>) -> DateTime<Utc> {
     let floored = floor_to_hour(dt);
     if floored == dt {
@@ -26,15 +28,16 @@ pub fn ceil_to_hour(dt: DateTime<Utc>) -> DateTime<Utc> {
 /// 解析微博时间字符串
 ///
 /// 微博API返回格式: "Mon Oct 07 12:34:56 +0800 2025"
+#[allow(dead_code)]
 pub fn parse_weibo_time(time_str: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
-    DateTime::parse_from_str(time_str, "%a %b %d %H:%M:%S %z %Y")
-        .map(|dt| dt.with_timezone(&Utc))
+    DateTime::parse_from_str(time_str, "%a %b %d %H:%M:%S %z %Y").map(|dt| dt.with_timezone(&Utc))
 }
 
 /// 格式化为微博API时间参数
 ///
 /// 输出格式: YYYYMMDDhhmmss (例: 20251007120000)
 /// 微博API仅支持小时精度，秒和分钟会被忽略
+#[allow(dead_code)]
 pub fn format_weibo_time(dt: DateTime<Utc>) -> String {
     dt.format("%Y%m%d%H0000").to_string()
 }
@@ -42,7 +45,7 @@ pub fn format_weibo_time(dt: DateTime<Utc>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use chrono::{Datelike, NaiveDate};
 
     #[test]
     fn test_floor_to_hour_removes_minutes_and_seconds() {

@@ -119,11 +119,7 @@ async fn mock_pause_crawl(
         .map_err(|e| PauseCrawlError::StorageError(e))?;
 
     redis
-        .hset(
-            &task_key,
-            "updated_at",
-            Utc::now().timestamp().to_string(),
-        )
+        .hset(&task_key, "updated_at", Utc::now().timestamp().to_string())
         .await
         .map_err(|e| PauseCrawlError::StorageError(e))?;
 
@@ -210,38 +206,22 @@ mod tests {
             .await
             .unwrap();
         redis
-            .hset(
-                &task_key,
-                "created_at",
-                Utc::now().timestamp().to_string(),
-            )
+            .hset(&task_key, "created_at", Utc::now().timestamp().to_string())
             .await
             .unwrap();
         redis
-            .hset(
-                &task_key,
-                "updated_at",
-                Utc::now().timestamp().to_string(),
-            )
+            .hset(&task_key, "updated_at", Utc::now().timestamp().to_string())
             .await
             .unwrap();
     }
 
     /// 辅助函数: 创建检查点
-    async fn create_test_checkpoint(
-        redis: &MockRedisService,
-        task_id: &str,
-        current_page: u32,
-    ) {
+    async fn create_test_checkpoint(redis: &MockRedisService, task_id: &str, current_page: u32) {
         let checkpoint_key = format!("crawl:checkpoint:{}", task_id);
         let now = Utc::now();
 
         redis
-            .hset(
-                &checkpoint_key,
-                "shard_start_time",
-                now.to_rfc3339(),
-            )
+            .hset(&checkpoint_key, "shard_start_time", now.to_rfc3339())
             .await
             .unwrap();
         redis
@@ -433,10 +413,7 @@ mod tests {
             .unwrap();
         assert!(shard_start.is_some());
 
-        let shard_end = redis
-            .hget(&checkpoint_key, "shard_end_time")
-            .await
-            .unwrap();
+        let shard_end = redis.hget(&checkpoint_key, "shard_end_time").await.unwrap();
         assert!(shard_end.is_some());
 
         let page = redis.hget(&checkpoint_key, "current_page").await.unwrap();

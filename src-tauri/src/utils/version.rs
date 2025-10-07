@@ -9,6 +9,7 @@ use std::cmp::Ordering;
 
 /// 版本号
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,

@@ -45,11 +45,7 @@ pub struct LoginStatusEvent {
 
 impl LoginStatusEvent {
     /// 创建新的状态事件
-    pub fn new(
-        qr_id: String,
-        status: QrCodeStatus,
-        cookies: Option<CookiesData>,
-    ) -> Self {
+    pub fn new(qr_id: String, status: QrCodeStatus, cookies: Option<CookiesData>) -> Self {
         Self {
             qr_id,
             status,

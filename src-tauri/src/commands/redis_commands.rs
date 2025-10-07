@@ -324,8 +324,7 @@ mod tests {
 
     #[test]
     fn test_classify_connection_refused() {
-        let redis_err =
-            redis::RedisError::from((redis::ErrorKind::IoError, "Connection refused"));
+        let redis_err = redis::RedisError::from((redis::ErrorKind::IoError, "Connection refused"));
         let classified = classify_connection_error(redis_err);
         assert!(matches!(
             classified,

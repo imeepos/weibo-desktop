@@ -45,13 +45,14 @@ async fn mock_save_cookies(
     }
 
     // 3. 调用Playwright验证
-    let (validated_uid, validated_screen_name) = validator
-        .validate()
-        .await
-        .map_err(|msg| SaveCookiesError::ProfileApiFailed {
-            status: 401,
-            message: msg,
-        })?;
+    let (validated_uid, validated_screen_name) =
+        validator
+            .validate()
+            .await
+            .map_err(|msg| SaveCookiesError::ProfileApiFailed {
+                status: 401,
+                message: msg,
+            })?;
 
     // 4. 验证UID匹配
     if validated_uid != uid {
@@ -177,14 +178,8 @@ mod tests {
         let validator = MockValidationService::new_failure();
         let cookies = create_test_cookies();
 
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -207,14 +202,8 @@ mod tests {
         let mut cookies = HashMap::new();
         cookies.insert("SUBP".to_string(), "only_subp".to_string());
 
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -235,14 +224,8 @@ mod tests {
         let validator = MockValidationService::new_success();
         let cookies = create_invalid_cookies(); // 只有SUB,缺少SUBP
 
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -264,14 +247,8 @@ mod tests {
         let validator = MockValidationService::new_success();
         let cookies = create_test_cookies();
 
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -360,14 +337,8 @@ mod tests {
         let validator = MockValidationService::new_success();
         let cookies = HashMap::new(); // 空cookies
 
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -388,14 +359,8 @@ mod tests {
         let validator = MockValidationService::new_success();
         let cookies = create_minimal_cookies();
 
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -415,14 +380,8 @@ mod tests {
         let cookies = create_test_cookies();
 
         let start = Instant::now();
-        let result = mock_save_cookies(
-            "1234567890".to_string(),
-            cookies,
-            None,
-            &redis,
-            &validator,
-        )
-        .await;
+        let result =
+            mock_save_cookies("1234567890".to_string(), cookies, None, &redis, &validator).await;
 
         let total_duration = start.elapsed();
         assert!(result.is_ok());

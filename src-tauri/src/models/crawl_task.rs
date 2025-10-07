@@ -369,7 +369,10 @@ mod tests {
         assert_eq!(CrawlStatus::Created.as_str(), "Created");
         assert_eq!(CrawlStatus::HistoryCrawling.as_str(), "HistoryCrawling");
         assert_eq!(CrawlStatus::HistoryCompleted.as_str(), "HistoryCompleted");
-        assert_eq!(CrawlStatus::IncrementalCrawling.as_str(), "IncrementalCrawling");
+        assert_eq!(
+            CrawlStatus::IncrementalCrawling.as_str(),
+            "IncrementalCrawling"
+        );
         assert_eq!(CrawlStatus::Paused.as_str(), "Paused");
         assert_eq!(CrawlStatus::Failed.as_str(), "Failed");
     }

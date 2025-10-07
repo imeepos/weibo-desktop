@@ -63,17 +63,26 @@ fn create_task_data(
     data.insert("id".to_string(), task_id.to_string());
     data.insert("keyword".to_string(), keyword.to_string());
     data.insert("status".to_string(), status.to_string());
-    data.insert("event_start_time".to_string(), event_start_time.timestamp().to_string());
+    data.insert(
+        "event_start_time".to_string(),
+        event_start_time.timestamp().to_string(),
+    );
     data.insert("crawled_count".to_string(), crawled_count.to_string());
     data.insert("created_at".to_string(), now.timestamp().to_string());
     data.insert("updated_at".to_string(), now.timestamp().to_string());
 
     if let Some(min_time) = min_post_time {
-        data.insert("min_post_time".to_string(), min_time.timestamp().to_string());
+        data.insert(
+            "min_post_time".to_string(),
+            min_time.timestamp().to_string(),
+        );
     }
 
     if let Some(max_time) = max_post_time {
-        data.insert("max_post_time".to_string(), max_time.timestamp().to_string());
+        data.insert(
+            "max_post_time".to_string(),
+            max_time.timestamp().to_string(),
+        );
     }
 
     if let Some(reason) = failure_reason {
@@ -95,8 +104,14 @@ fn create_checkpoint_data(
     let mut data = HashMap::new();
 
     data.insert("task_id".to_string(), task_id.to_string());
-    data.insert("shard_start_time".to_string(), shard_start_time.timestamp().to_string());
-    data.insert("shard_end_time".to_string(), shard_end_time.timestamp().to_string());
+    data.insert(
+        "shard_start_time".to_string(),
+        shard_start_time.timestamp().to_string(),
+    );
+    data.insert(
+        "shard_end_time".to_string(),
+        shard_end_time.timestamp().to_string(),
+    );
     data.insert("current_page".to_string(), current_page.to_string());
     data.insert("direction".to_string(), direction.to_string());
     data.insert("completed_shards".to_string(), completed_shards.to_string());

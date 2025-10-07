@@ -245,10 +245,7 @@ pub fn create_test_cookies() -> HashMap<String, String> {
     cookies.insert("SUB".to_string(), "test_sub_value_123".to_string());
     cookies.insert("SUBP".to_string(), "test_subp_value_456".to_string());
     cookies.insert("_T_WM".to_string(), "test_twm_value_789".to_string());
-    cookies.insert(
-        "XSRF-TOKEN".to_string(),
-        "test_xsrf_token_abc".to_string(),
-    );
+    cookies.insert("XSRF-TOKEN".to_string(), "test_xsrf_token_abc".to_string());
     cookies
 }
 

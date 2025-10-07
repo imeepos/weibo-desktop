@@ -5,12 +5,12 @@
 //! - 提供浏览器配置 (headless, no-sandbox)
 //! - 处理浏览器连接状态
 
+use crate::models::errors::ApiError;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use futures_util::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
-use crate::models::errors::ApiError;
 
 /// 全局浏览器实例 (使用 Arc 共享)
 static GLOBAL_BROWSER: once_cell::sync::Lazy<Arc<Mutex<Option<Arc<Browser>>>>> =
@@ -49,7 +49,7 @@ impl BrowserService {
                     "--disable-dev-shm-usage",
                 ])
                 .build()
-                .map_err(|e| ApiError::BrowserError(format!("浏览器配置失败: {}", e)))?
+                .map_err(|e| ApiError::BrowserError(format!("浏览器配置失败: {}", e)))?,
         )
         .await
         .map_err(|e| ApiError::BrowserError(format!("浏览器启动失败: {}", e)))?;

@@ -27,7 +27,6 @@ struct PlaywrightValidationResult {
     error: Option<String>,
 }
 
-
 impl ValidationService {
     /// 创建新的验证服务
     ///

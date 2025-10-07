@@ -16,10 +16,10 @@
 //! 4. **错误处理**: 所有错误都有明确分类和上下文信息
 //! 5. **日志安全**: 避免在日志中记录敏感信息
 
+use crate::models::errors::InstallErrorType;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::models::errors::InstallErrorType;
 
 /// 依赖重要性级别
 ///
@@ -155,7 +155,11 @@ impl Dependency {
         }
 
         // 验证ID只包含小写字母、数字和连字符
-        if !self.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        if !self
+            .id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
             return Err("依赖项ID只能包含小写字母、数字和连字符".to_string());
         }
 
@@ -230,7 +234,10 @@ impl CheckStatus {
 
     /// 检查是否为失败状态
     pub fn is_failure(&self) -> bool {
-        matches!(self, CheckStatus::Missing | CheckStatus::VersionMismatch | CheckStatus::Corrupted)
+        matches!(
+            self,
+            CheckStatus::Missing | CheckStatus::VersionMismatch | CheckStatus::Corrupted
+        )
     }
 
     /// 获取状态描述
@@ -290,8 +297,18 @@ impl DependencyCheckResult {
     }
 
     /// 创建成功结果
-    pub fn success(dependency_id: String, detected_version: Option<String>, duration_ms: u64) -> Self {
-        Self::new(dependency_id, CheckStatus::Satisfied, detected_version, None, duration_ms)
+    pub fn success(
+        dependency_id: String,
+        detected_version: Option<String>,
+        duration_ms: u64,
+    ) -> Self {
+        Self::new(
+            dependency_id,
+            CheckStatus::Satisfied,
+            detected_version,
+            None,
+            duration_ms,
+        )
     }
 
     /// 创建失败结果
@@ -301,7 +318,13 @@ impl DependencyCheckResult {
         error_details: String,
         duration_ms: u64,
     ) -> Self {
-        Self::new(dependency_id, status, None, Some(error_details), duration_ms)
+        Self::new(
+            dependency_id,
+            status,
+            None,
+            Some(error_details),
+            duration_ms,
+        )
     }
 
     /// 检查是否为成功检测
@@ -438,7 +461,8 @@ impl InstallationTask {
         self.completed_at = Some(Utc::now());
         self.status = InstallStatus::Failed;
         self.error_type = Some(error_type);
-        self.install_log.push(format!("安装失败: {}", error_message));
+        self.install_log
+            .push(format!("安装失败: {}", error_message));
         self.error_message = Some(error_message);
     }
 
@@ -452,7 +476,13 @@ impl InstallationTask {
     }
 
     /// 安全地更新进度，自动验证范围
-    pub fn update_progress_safe(&mut self, status: InstallStatus, progress: u8, log_entry: String) -> Result<(), String> {
+    #[allow(dead_code)]
+    pub fn update_progress_safe(
+        &mut self,
+        status: InstallStatus,
+        progress: u8,
+        log_entry: String,
+    ) -> Result<(), String> {
         let validated_progress = Self::validate_progress(progress)?;
         self.status = status;
         self.progress_percent = validated_progress;
@@ -471,6 +501,7 @@ impl InstallationTask {
     }
 
     /// 获取任务运行时长（毫秒）
+    #[allow(dead_code)]
     pub fn get_duration_ms(&self) -> Option<u64> {
         let start = self.started_at?;
         let end = self.completed_at.unwrap_or_else(Utc::now);
@@ -483,6 +514,7 @@ impl InstallationTask {
     }
 
     /// 获取最后一个日志条目
+    #[allow(dead_code)]
     pub fn last_log(&self) -> Option<&String> {
         self.install_log.last()
     }
@@ -566,11 +598,8 @@ mod tests {
 
     #[test]
     fn test_dependency_check_result() {
-        let result = DependencyCheckResult::success(
-            "nodejs".to_string(),
-            Some("20.10.0".to_string()),
-            45,
-        );
+        let result =
+            DependencyCheckResult::success("nodejs".to_string(), Some("20.10.0".to_string()), 45);
 
         assert!(result.is_satisfied());
         assert!(!result.is_failed());

@@ -1,8 +1,8 @@
+use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
 use tokio::net::TcpStream;
-use futures_util::{StreamExt, SinkExt};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use crate::models::{ApiError, LoginSession};
 
@@ -107,10 +107,13 @@ impl WeiboApiClient {
             "type": "generate_qrcode"
         });
 
-        ws_stream.send(Message::Text(request.to_string())).await.map_err(|e| {
-            tracing::error!(错误 = %e, "发送WebSocket消息失败");
-            ApiError::NetworkFailed(format!("Failed to send message: {}", e))
-        })?;
+        ws_stream
+            .send(Message::Text(request.to_string()))
+            .await
+            .map_err(|e| {
+                tracing::error!(错误 = %e, "发送WebSocket消息失败");
+                ApiError::NetworkFailed(format!("Failed to send message: {}", e))
+            })?;
 
         // 等待响应 (循环直到收到qrcode_generated或error)
         while let Some(msg_result) = ws_stream.next().await {
@@ -119,7 +122,13 @@ impl WeiboApiClient {
                     tracing::debug!(消息内容 = %text, "收到WebSocket响应");
 
                     match serde_json::from_str::<WsEvent>(&text) {
-                        Ok(WsEvent::QrcodeGenerated { session_id, qr_image, expires_in, expires_at, .. }) => {
+                        Ok(WsEvent::QrcodeGenerated {
+                            session_id,
+                            qr_image,
+                            expires_in,
+                            expires_at,
+                            ..
+                        }) => {
                             let session = LoginSession::from_timestamp(session_id, expires_at);
 
                             tracing::info!(
@@ -131,9 +140,16 @@ impl WeiboApiClient {
 
                             return Ok((session, qr_image, ws_stream));
                         }
-                        Ok(WsEvent::Error { error_type, message, .. }) => {
+                        Ok(WsEvent::Error {
+                            error_type,
+                            message,
+                            ..
+                        }) => {
                             tracing::error!(错误类型 = %error_type, 错误信息 = %message, "收到错误消息");
-                            return Err(ApiError::QrCodeGenerationFailed(format!("{}: {}", error_type, message)));
+                            return Err(ApiError::QrCodeGenerationFailed(format!(
+                                "{}: {}",
+                                error_type, message
+                            )));
                         }
                         Ok(_other) => {
                             tracing::debug!("跳过中间消息,继续等待qrcode_generated");
@@ -147,7 +163,9 @@ impl WeiboApiClient {
                 }
                 Ok(msg) => {
                     tracing::error!(消息类型 = ?msg, "收到非文本消息");
-                    return Err(ApiError::QrCodeGenerationFailed("Received non-text message".to_string()));
+                    return Err(ApiError::QrCodeGenerationFailed(
+                        "Received non-text message".to_string(),
+                    ));
                 }
                 Err(e) => {
                     tracing::error!(错误 = %e, "WebSocket消息接收失败");
@@ -157,7 +175,9 @@ impl WeiboApiClient {
         }
 
         tracing::error!("WebSocket连接意外关闭");
-        Err(ApiError::NetworkFailed("WebSocket connection closed unexpectedly".to_string()))
+        Err(ApiError::NetworkFailed(
+            "WebSocket connection closed unexpectedly".to_string(),
+        ))
     }
 
     /// 验证WebSocket连接健康状态
@@ -180,43 +200,50 @@ impl WeiboApiClient {
             "type": "ping"
         });
 
-        ws_stream.send(Message::Text(ping_request.to_string())).await.map_err(|e| {
-            tracing::error!(错误 = %e, "发送ping消息失败");
-            ApiError::NetworkFailed(format!("Failed to send ping: {}", e))
-        })?;
+        ws_stream
+            .send(Message::Text(ping_request.to_string()))
+            .await
+            .map_err(|e| {
+                tracing::error!(错误 = %e, "发送ping消息失败");
+                ApiError::NetworkFailed(format!("Failed to send ping: {}", e))
+            })?;
 
         // 等待pong响应 (超时3秒)
         let pong_result = timeout(Duration::from_secs(3), async {
             while let Some(msg_result) = ws_stream.next().await {
                 match msg_result {
-                    Ok(Message::Text(text)) => {
-                        match serde_json::from_str::<WsEvent>(&text) {
-                            Ok(WsEvent::Pong { timestamp }) => {
-                                tracing::info!(服务器时间戳 = timestamp, "收到pong响应,服务器健康");
-                                return Ok(());
-                            }
-                            Ok(_other) => {
-                                tracing::debug!("跳过非pong消息,继续等待");
-                                continue;
-                            }
-                            Err(e) => {
-                                tracing::warn!(错误 = %e, 消息 = %text, "消息解析失败,继续等待");
-                                continue;
-                            }
+                    Ok(Message::Text(text)) => match serde_json::from_str::<WsEvent>(&text) {
+                        Ok(WsEvent::Pong { timestamp }) => {
+                            tracing::info!(服务器时间戳 = timestamp, "收到pong响应,服务器健康");
+                            return Ok(());
                         }
-                    }
+                        Ok(_other) => {
+                            tracing::debug!("跳过非pong消息,继续等待");
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::warn!(错误 = %e, 消息 = %text, "消息解析失败,继续等待");
+                            continue;
+                        }
+                    },
                     Ok(_msg) => {
                         tracing::debug!("跳过非文本消息");
                         continue;
                     }
                     Err(e) => {
                         tracing::error!(错误 = %e, "接收消息失败");
-                        return Err(ApiError::NetworkFailed(format!("Failed to receive pong: {}", e)));
+                        return Err(ApiError::NetworkFailed(format!(
+                            "Failed to receive pong: {}",
+                            e
+                        )));
                     }
                 }
             }
-            Err(ApiError::NetworkFailed("WebSocket连接在等待pong时关闭".to_string()))
-        }).await;
+            Err(ApiError::NetworkFailed(
+                "WebSocket连接在等待pong时关闭".to_string(),
+            ))
+        })
+        .await;
 
         match pong_result {
             Ok(Ok(())) => Ok(()),
@@ -302,7 +329,16 @@ impl WeiboApiClient {
     /// # 错误
     /// - `ApiError::PlaywrightServerNotRunning`: Playwright服务器未启动
     /// - `ApiError::NetworkFailed`: 其他网络错误
-    async fn connect_with_retry(url: &str, max_retries: u32) -> Result<(WsStream, tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>), ApiError> {
+    async fn connect_with_retry(
+        url: &str,
+        max_retries: u32,
+    ) -> Result<
+        (
+            WsStream,
+            tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>,
+        ),
+        ApiError,
+    > {
         use tokio::time::{sleep, Duration};
 
         for attempt in 0..max_retries {
@@ -325,7 +361,9 @@ impl WeiboApiClient {
                 Err(e) => {
                     let error_msg = e.to_string().to_lowercase();
 
-                    if error_msg.contains("connection refused") || error_msg.contains("connect error") {
+                    if error_msg.contains("connection refused")
+                        || error_msg.contains("connect error")
+                    {
                         tracing::error!(
                             错误 = %e,
                             URL = %url,
@@ -348,5 +386,4 @@ impl WeiboApiClient {
 
         unreachable!()
     }
-
 }

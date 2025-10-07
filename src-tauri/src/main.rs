@@ -17,8 +17,7 @@ fn main() {
     tracing::info!("应用程序启动 (WebSocket模式)...");
 
     // 读取 Redis 配置 (从 .env 文件)
-    let redis_config = ConfigService::load_redis_config()
-        .expect("无法加载 Redis 配置");
+    let redis_config = ConfigService::load_redis_config().expect("无法加载 Redis 配置");
     let redis_url = redis_config.to_connection_url();
 
     tracing::info!(
@@ -78,8 +77,8 @@ fn main() {
         ])
         .setup(move |_app| {
             // 浏览器后端选择
-            let backend = std::env::var("BROWSER_BACKEND")
-                .unwrap_or_else(|_| "playwright".to_string());
+            let backend =
+                std::env::var("BROWSER_BACKEND").unwrap_or_else(|_| "playwright".to_string());
 
             match backend.as_str() {
                 #[cfg(feature = "rust-browser-poc")]
@@ -97,7 +96,10 @@ fn main() {
                 }
                 _ => {
                     tracing::info!("使用 Playwright Server (稳定,默认)");
-                    tracing::info!("Playwright server 由外部脚本管理: {}", playwright_server_url);
+                    tracing::info!(
+                        "Playwright server 由外部脚本管理: {}",
+                        playwright_server_url
+                    );
                 }
             }
 

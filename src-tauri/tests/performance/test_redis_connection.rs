@@ -1,6 +1,5 @@
 //! Redis连接测试 - 用于验证测试环境
 
-use redis::AsyncCommands;
 use weibo_login::services::RedisService;
 
 #[tokio::test]
@@ -10,7 +9,7 @@ async fn test_redis_connection() {
     let urls = vec![
         "redis://localhost:6379",
         "redis://127.0.0.1:6379",
-        "redis://172.28.0.10:6379",  // Docker network IP
+        "redis://172.28.0.10:6379", // Docker network IP
     ];
 
     for redis_url in urls {

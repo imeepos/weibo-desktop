@@ -70,7 +70,11 @@ impl SessionManager {
     /// 获取当前活跃会话的二维码ID (仅用于调试)
     #[allow(dead_code)]
     pub async fn current_qr_id(&self) -> Option<String> {
-        self.current_session.lock().await.as_ref().map(|(id, _)| id.clone())
+        self.current_session
+            .lock()
+            .await
+            .as_ref()
+            .map(|(id, _)| id.clone())
     }
 }
 
@@ -96,7 +100,9 @@ mod tests {
         })
         .abort_handle();
 
-        manager.set_current_session("qr1".to_string(), handle1).await;
+        manager
+            .set_current_session("qr1".to_string(), handle1)
+            .await;
         assert_eq!(manager.current_qr_id().await, Some("qr1".to_string()));
 
         // 替换会话
@@ -107,7 +113,9 @@ mod tests {
         })
         .abort_handle();
 
-        manager.set_current_session("qr2".to_string(), handle2).await;
+        manager
+            .set_current_session("qr2".to_string(), handle2)
+            .await;
         assert_eq!(manager.current_qr_id().await, Some("qr2".to_string()));
     }
 

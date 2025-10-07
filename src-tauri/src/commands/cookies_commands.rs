@@ -14,71 +14,47 @@ use thiserror::Error;
 pub enum SaveCookiesError {
     /// 个人资料API调用失败 (Cookies无效)
     #[error("个人资料API调用失败 (状态码 {status}): {message}")]
-    ProfileApiFailed {
-        status: u16,
-        message: String,
-    },
+    ProfileApiFailed { status: u16, message: String },
 
     /// 缺少必需的cookie字段
     #[error("缺少必需的cookie字段: {cookie_name}")]
-    MissingCookie {
-        cookie_name: String,
-    },
+    MissingCookie { cookie_name: String },
 
     /// Playwright执行失败
     #[error("Playwright脚本执行失败: {message}")]
-    PlaywrightFailed {
-        message: String,
-    },
+    PlaywrightFailed { message: String },
 
     /// Cookies格式无效
     #[error("Cookies格式无效: {message}")]
-    InvalidFormat {
-        message: String,
-    },
+    InvalidFormat { message: String },
 
     /// UID提取失败
     #[error("无法提取用户UID: {message}")]
-    UidExtractionFailed {
-        message: String,
-    },
+    UidExtractionFailed { message: String },
 
     /// Redis连接失败
     #[error("Redis连接失败: {message}")]
-    RedisConnectionFailed {
-        message: String,
-    },
+    RedisConnectionFailed { message: String },
 
     /// 指定UID的Cookies未找到
     #[error("未找到UID {uid} 的Cookies")]
-    NotFound {
-        uid: String,
-    },
+    NotFound { uid: String },
 
     /// 序列化/反序列化失败
     #[error("数据序列化失败: {message}")]
-    SerializationError {
-        message: String,
-    },
+    SerializationError { message: String },
 
     /// Redis操作超时
     #[error("Redis操作超时: {message}")]
-    OperationTimeout {
-        message: String,
-    },
+    OperationTimeout { message: String },
 
     /// Redis命令执行失败
     #[error("Redis命令执行失败: {message}")]
-    CommandFailed {
-        message: String,
-    },
+    CommandFailed { message: String },
 
     /// UID不匹配
     #[error("UID不匹配: 期望 {expected}, 实际 {actual}")]
-    UidMismatch {
-        expected: String,
-        actual: String,
-    },
+    UidMismatch { expected: String, actual: String },
 }
 
 /// 从 ValidationError 转换为 SaveCookiesError
@@ -94,9 +70,7 @@ impl From<ValidationError> for SaveCookiesError {
             ValidationError::PlaywrightFailed(message) => {
                 SaveCookiesError::PlaywrightFailed { message }
             }
-            ValidationError::InvalidFormat(message) => {
-                SaveCookiesError::InvalidFormat { message }
-            }
+            ValidationError::InvalidFormat(message) => SaveCookiesError::InvalidFormat { message },
             ValidationError::UidExtractionFailed(message) => {
                 SaveCookiesError::UidExtractionFailed { message }
             }
@@ -118,9 +92,7 @@ impl From<StorageError> for SaveCookiesError {
             StorageError::OperationTimeout(message) => {
                 SaveCookiesError::OperationTimeout { message }
             }
-            StorageError::CommandFailed(message) => {
-                SaveCookiesError::CommandFailed { message }
-            }
+            StorageError::CommandFailed(message) => SaveCookiesError::CommandFailed { message },
         }
     }
 }
@@ -169,8 +141,7 @@ pub async fn save_cookies(
     let start = std::time::Instant::now();
 
     // 验证cookies
-    let (validated_uid, validated_screen_name) =
-        state.validator.validate_cookies(&cookies).await?;
+    let (validated_uid, validated_screen_name) = state.validator.validate_cookies(&cookies).await?;
 
     // 确保UID匹配 - 安全性的基石
     if validated_uid != uid {
@@ -208,6 +179,12 @@ pub async fn save_cookies(
     })
 }
 
+/// 查询Cookies请求
+#[derive(Debug, Deserialize)]
+pub struct QueryCookiesRequest {
+    pub uid: String,
+}
+
 /// 查询Cookies命令
 ///
 /// 根据UID检索已保存的cookies。
@@ -219,14 +196,14 @@ pub async fn save_cookies(
 /// - 展示用户昵称 (screen_name)
 #[tauri::command]
 pub async fn query_cookies(
-    uid: String,
+    request: QueryCookiesRequest,
     state: State<'_, AppState>,
 ) -> Result<CookiesData, String> {
-    tracing::debug!(用户ID = %uid, "调用query_cookies命令");
+    tracing::debug!(用户ID = %request.uid, "调用query_cookies命令");
 
     state
         .redis
-        .query_cookies(&uid)
+        .query_cookies(&request.uid)
         .await
         .map_err(|e| format!("Query failed: {}", e))
 }
@@ -239,10 +216,7 @@ pub async fn query_cookies(
 /// 幂等性保证: 删除不存在的UID不会报错,
 /// 因为结果一致 - "该UID的cookies不存在"。
 #[tauri::command]
-pub async fn delete_cookies(
-    uid: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn delete_cookies(uid: String, state: State<'_, AppState>) -> Result<(), String> {
     tracing::info!(用户ID = %uid, "调用delete_cookies命令");
 
     state
@@ -260,9 +234,7 @@ pub async fn delete_cookies(
 /// - 批量查询每个UID的详细信息
 /// - 统计已登录账号数量
 #[tauri::command]
-pub async fn list_all_uids(
-    state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
+pub async fn list_all_uids(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     tracing::debug!("调用list_all_uids命令");
 
     state

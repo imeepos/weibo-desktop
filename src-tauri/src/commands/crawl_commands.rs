@@ -8,7 +8,7 @@
 //! - export_crawl_data: 导出爬取数据(JSON/CSV)
 //! - list_crawl_tasks: 列出所有任务
 
-use crate::models::{CrawlTask, CrawlStatus};
+use crate::models::{CrawlStatus, CrawlTask};
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -55,16 +55,16 @@ impl CommandError {
     }
 
     fn task_not_found(task_id: &str) -> Self {
-        Self::new(
-            "TASK_NOT_FOUND",
-            format!("任务 {} 不存在", task_id),
-        )
+        Self::new("TASK_NOT_FOUND", format!("任务 {} 不存在", task_id))
     }
 
     fn invalid_status(current_status: &str, allowed: &str) -> Self {
         Self::new(
             "INVALID_STATUS",
-            format!("任务状态 {} 无法执行此操作,仅支持{}", current_status, allowed),
+            format!(
+                "任务状态 {} 无法执行此操作,仅支持{}",
+                current_status, allowed
+            ),
         )
     }
 
@@ -76,17 +76,11 @@ impl CommandError {
     }
 
     fn no_data(task_id: &str) -> Self {
-        Self::new(
-            "NO_DATA",
-            format!("任务 {} 尚无数据可导出", task_id),
-        )
+        Self::new("NO_DATA", format!("任务 {} 尚无数据可导出", task_id))
     }
 
     fn invalid_format(format: &str) -> Self {
-        Self::new(
-            "INVALID_FORMAT",
-            format!("不支持的导出格式: {}", format),
-        )
+        Self::new("INVALID_FORMAT", format!("不支持的导出格式: {}", format))
     }
 
     fn storage_error(details: &str) -> Self {
@@ -359,12 +353,10 @@ pub async fn start_crawl(
             // 已在运行
             Err(CommandError::already_running())
         }
-        CrawlStatus::Failed => {
-            Err(CommandError::invalid_status(
-                task.status.as_str(),
-                "Created/Paused/HistoryCompleted",
-            ))
-        }
+        CrawlStatus::Failed => Err(CommandError::invalid_status(
+            task.status.as_str(),
+            "Created/Paused/HistoryCompleted",
+        )),
     }
 }
 

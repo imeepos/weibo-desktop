@@ -13,7 +13,6 @@ use std::collections::HashMap;
 
 /// 这里直接导入已有的模块进行测试
 /// 如果需要访问私有字段,需要在源码模块添加 #[cfg(test)] pub
-
 #[cfg(test)]
 mod login_session_tests {
     #![allow(unused)]
@@ -236,7 +235,6 @@ mod errors_tests {
         // - ApiError::JsonParseFailed
         // - StorageError::SerializationError
     }
-
 }
 
 /// 集成测试: 完整业务流程
@@ -371,7 +369,7 @@ mod standalone_tests {
     /// 测试 Vec 排序和连接
     #[test]
     fn test_vec_sort_and_join() {
-        let mut items = vec!["_T_WM", "SUB", "SUBP"];
+        let mut items = ["_T_WM", "SUB", "SUBP"];
         items.sort();
         let result = items.join(", ");
         assert_eq!(result, "SUB, SUBP, _T_WM");

@@ -77,8 +77,8 @@ async fn mock_start_crawl(
     task.status = new_status;
     task.updated_at = Utc::now();
 
-    let updated_json = serde_json::to_string(&task)
-        .map_err(|e| StartCrawlError::StorageError(e.to_string()))?;
+    let updated_json =
+        serde_json::to_string(&task).map_err(|e| StartCrawlError::StorageError(e.to_string()))?;
     redis
         .set(task_key, updated_json)
         .await
@@ -87,8 +87,7 @@ async fn mock_start_crawl(
     // 5. 返回响应
     let message = match task.status {
         CrawlStatus::HistoryCrawling if direction == CrawlDirection::Backward => {
-            if matches!(new_status, CrawlStatus::HistoryCrawling)
-                && task.min_post_time.is_some() {
+            if matches!(new_status, CrawlStatus::HistoryCrawling) && task.min_post_time.is_some() {
                 "任务已恢复,从检查点继续爬取".to_string()
             } else {
                 "任务已启动,开始历史回溯".to_string()
@@ -195,11 +194,7 @@ async fn save_task_to_redis(redis: &MockRedisService, task: &CrawlTask) {
 }
 
 /// 保存检查点到Mock Redis
-async fn save_checkpoint_to_redis(
-    redis: &MockRedisService,
-    task_id: &str,
-    direction: &str,
-) {
+async fn save_checkpoint_to_redis(redis: &MockRedisService, task_id: &str, direction: &str) {
     let checkpoint_key = format!("crawl:checkpoint:{}", task_id);
     let checkpoint = serde_json::json!({
         "task_id": task_id,

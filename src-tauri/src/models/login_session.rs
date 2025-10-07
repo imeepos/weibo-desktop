@@ -101,28 +101,33 @@ impl LoginSession {
     }
 
     /// 更新状态为已扫码
+    #[allow(dead_code)]
     pub fn mark_scanned(&mut self) {
         self.status = QrCodeStatus::Scanned;
         self.scanned_at = Some(Utc::now());
     }
 
     /// 更新状态为确认成功
+    #[allow(dead_code)]
     pub fn mark_confirmed(&mut self) {
         self.status = QrCodeStatus::Confirmed;
         self.confirmed_at = Some(Utc::now());
     }
 
     /// 更新状态为已过期
+    #[allow(dead_code)]
     pub fn mark_expired(&mut self) {
         self.status = QrCodeStatus::Expired;
     }
 
     /// 更新状态为已拒绝
+    #[allow(dead_code)]
     pub fn mark_rejected(&mut self) {
         self.status = QrCodeStatus::Rejected;
     }
 
     /// 获取会话持续时长(秒)
+    #[allow(dead_code)]
     pub fn duration_seconds(&self) -> i64 {
         (Utc::now() - self.created_at).num_seconds()
     }

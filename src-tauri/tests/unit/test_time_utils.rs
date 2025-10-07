@@ -1,5 +1,7 @@
 use chrono::{Datelike, NaiveDate, Timelike};
-use weibo_login::utils::time_utils::{ceil_to_hour, floor_to_hour, format_weibo_time, parse_weibo_time};
+use weibo_login::utils::time_utils::{
+    ceil_to_hour, floor_to_hour, format_weibo_time, parse_weibo_time,
+};
 
 // ============================================================================
 // floor_to_hour 测试
@@ -248,7 +250,7 @@ fn test_format_weibo_time_零填充_单数小时() {
 }
 
 #[test]
-fn test_format_weibo_time_UTC时间转换() {
+fn test_format_weibo_time_utc_conversion() {
     // UTC时间应直接格式化，不做时区转换
     let dt = NaiveDate::from_ymd_opt(2025, 10, 7)
         .unwrap()

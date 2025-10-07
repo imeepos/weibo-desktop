@@ -13,7 +13,7 @@ mod common;
 use chrono::{DateTime, Duration, Utc};
 use common::MockRedisService;
 use weibo_login::models::{
-    crawl_checkpoint::{CrawlCheckpoint, CrawlDirection},
+    crawl_checkpoint::CrawlCheckpoint,
     crawl_events::CrawlCompletedEvent,
     crawl_task::{CrawlStatus, CrawlTask},
     weibo_post::WeiboPost,
@@ -59,11 +59,8 @@ impl MockCrawlEngine {
 
         while current_time > target_time {
             // 模拟爬取一页 (20条帖子)
-            let posts = self.simulate_crawl_page(
-                &task.id,
-                current_time,
-                current_time - Duration::hours(1),
-            );
+            let posts =
+                self.simulate_crawl_page(&task.id, current_time, current_time - Duration::hours(1));
 
             // 保存帖子到Redis
             for post in posts {
@@ -122,8 +119,7 @@ impl MockCrawlEngine {
         let page_size = 20;
 
         for i in 0..page_size {
-            let post_time = end_time
-                + Duration::minutes(i * 3); // 每条帖子间隔3分钟
+            let post_time = end_time + Duration::minutes(i * 3); // 每条帖子间隔3分钟
 
             let post = WeiboPost::new(
                 format!("post_{}_{}", task_id, post_time.timestamp()),
@@ -162,9 +158,7 @@ impl MockCrawlEngine {
         // 3. 保存帖子内容 (模拟 Sorted Set)
         let posts_key = format!("crawl:posts:{}", task_id);
         let post_json = post.to_json().map_err(|e| e.to_string())?;
-        self.redis
-            .hset(&posts_key, &post.id, post_json)
-            .await?;
+        self.redis.hset(&posts_key, &post.id, post_json).await?;
 
         Ok(())
     }
@@ -201,11 +195,8 @@ mod tests {
             .expect("状态转换失败");
 
         // 创建检查点
-        let mut checkpoint = CrawlCheckpoint::new_backward(
-            task.id.clone(),
-            event_start_time,
-            Utc::now(),
-        );
+        let mut checkpoint =
+            CrawlCheckpoint::new_backward(task.id.clone(), event_start_time, Utc::now());
 
         // 执行历史回溯直到完成
         let result = engine
@@ -232,10 +223,7 @@ mod tests {
         assert!(event.total_crawled > 0, "应该爬取到帖子");
 
         // 验证 min_post_time 接近 event_start_time
-        assert!(
-            task.min_post_time.is_some(),
-            "min_post_time 应该已设置"
-        );
+        assert!(task.min_post_time.is_some(), "min_post_time 应该已设置");
         let min_time = task.min_post_time.unwrap();
         let diff = (min_time.timestamp() - event_start_time.timestamp()).abs();
         assert!(
@@ -245,10 +233,7 @@ mod tests {
         );
 
         // 验证 max_post_time 接近当前时间
-        assert!(
-            task.max_post_time.is_some(),
-            "max_post_time 应该已设置"
-        );
+        assert!(task.max_post_time.is_some(), "max_post_time 应该已设置");
         let max_time = task.max_post_time.unwrap();
         let now = Utc::now();
         let max_diff = (now.timestamp() - max_time.timestamp()).abs();
@@ -316,11 +301,8 @@ mod tests {
         task.transition_to(CrawlStatus::HistoryCrawling)
             .expect("状态转换失败");
 
-        let mut checkpoint = CrawlCheckpoint::new_backward(
-            task.id.clone(),
-            event_start_time,
-            Utc::now(),
-        );
+        let mut checkpoint =
+            CrawlCheckpoint::new_backward(task.id.clone(), event_start_time, Utc::now());
 
         let result = engine
             .run_until_history_completed(&mut task, &mut checkpoint)

@@ -38,9 +38,7 @@ impl AppState {
         playwright_validation_script: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let redis = Arc::new(RedisService::new(redis_url)?);
-        let weibo_api = Arc::new(WeiboApiClient::new(
-            playwright_server_url.to_string(),
-        ));
+        let weibo_api = Arc::new(WeiboApiClient::new(playwright_server_url.to_string()));
         let validator = Arc::new(ValidationService::new(
             playwright_validation_script.to_string(),
         ));

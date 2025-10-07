@@ -150,9 +150,18 @@ mod redis_crawl_storage_tests {
         service.save_posts(task_id, &posts).await.unwrap();
 
         // 检查帖子存在性
-        let exists_001 = service.check_post_exists(task_id, "post_001").await.unwrap();
-        let exists_002 = service.check_post_exists(task_id, "post_002").await.unwrap();
-        let exists_999 = service.check_post_exists(task_id, "post_999").await.unwrap();
+        let exists_001 = service
+            .check_post_exists(task_id, "post_001")
+            .await
+            .unwrap();
+        let exists_002 = service
+            .check_post_exists(task_id, "post_002")
+            .await
+            .unwrap();
+        let exists_999 = service
+            .check_post_exists(task_id, "post_999")
+            .await
+            .unwrap();
 
         assert!(exists_001);
         assert!(exists_002);

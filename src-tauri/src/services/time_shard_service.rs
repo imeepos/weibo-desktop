@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use std::boxed::Box;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 use crate::utils::time_utils::{ceil_to_hour, floor_to_hour};
 
@@ -95,52 +95,54 @@ impl TimeShardService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
         keyword: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<(DateTime<Utc>, DateTime<Utc>)>, String>> + Send + 'a>> {
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Vec<(DateTime<Utc>, DateTime<Utc>)>, String>> + Send + 'a>,
+    > {
         Box::pin(async move {
-        const MAX_RESULTS: usize = 1000;
-        const MIN_SHARD_HOURS: i64 = 1;
+            const MAX_RESULTS: usize = 1000;
+            const MIN_SHARD_HOURS: i64 = 1;
 
-        // 估算结果数
-        let total_results = self.estimate_total_results(start, end, keyword).await?;
+            // 估算结果数
+            let total_results = self.estimate_total_results(start, end, keyword).await?;
 
-        // 情况1: 结果数可接受，无需分片
-        if total_results <= MAX_RESULTS {
+            // 情况1: 结果数可接受，无需分片
+            if total_results <= MAX_RESULTS {
+                tracing::debug!(
+                    keyword,
+                    start = %start,
+                    end = %end,
+                    total_results,
+                    "时间范围无需分片"
+                );
+                return Ok(vec![(start, end)]);
+            }
+
+            // 情况2: 已达最小粒度，无法再分
+            let duration_hours = end.signed_duration_since(start).num_hours();
+            if duration_hours <= MIN_SHARD_HOURS {
+                tracing::warn!(
+                    keyword,
+                    start = %start,
+                    end = %end,
+                    total_results,
+                    "时间范围仅{}小时但结果数超过限制，将跳过部分数据",
+                    duration_hours
+                );
+                return Ok(vec![(start, end)]);
+            }
+
+            // 情况3: 二分时间范围
+            let mid = start + (end - start) / 2;
+            let mid_aligned = floor_to_hour(mid);
+
             tracing::debug!(
                 keyword,
                 start = %start,
                 end = %end,
+                mid = %mid_aligned,
                 total_results,
-                "时间范围无需分片"
+                "二分时间范围"
             );
-            return Ok(vec![(start, end)]);
-        }
-
-        // 情况2: 已达最小粒度，无法再分
-        let duration_hours = end.signed_duration_since(start).num_hours();
-        if duration_hours <= MIN_SHARD_HOURS {
-            tracing::warn!(
-                keyword,
-                start = %start,
-                end = %end,
-                total_results,
-                "时间范围仅{}小时但结果数超过限制，将跳过部分数据",
-                duration_hours
-            );
-            return Ok(vec![(start, end)]);
-        }
-
-        // 情况3: 二分时间范围
-        let mid = start + (end - start) / 2;
-        let mid_aligned = floor_to_hour(mid);
-
-        tracing::debug!(
-            keyword,
-            start = %start,
-            end = %end,
-            mid = %mid_aligned,
-            total_results,
-            "二分时间范围"
-        );
 
             let left_shards = self.split_recursive(start, mid_aligned, keyword).await?;
             let right_shards = self.split_recursive(mid_aligned, end, keyword).await?;

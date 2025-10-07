@@ -7,12 +7,10 @@
 //! - 调用Playwright脚本执行实际爬取
 //! - 保存检查点支持断点续爬
 
-use crate::models::{
-    CrawlCheckpoint, CrawlDirection, WeiboPost,
-};
 use crate::models::crawl_events::{
     CrawlErrorEvent, CrawlProgressEvent, CrawlStatus, ErrorCode, TimeRange,
 };
+use crate::models::{CrawlCheckpoint, CrawlDirection, WeiboPost};
 use crate::services::RedisService;
 use crate::utils::time_utils::{ceil_to_hour, floor_to_hour, format_weibo_time};
 use chrono::{DateTime, Utc};
@@ -104,7 +102,10 @@ impl CrawlService {
     /// 使用TimeShardService拆分时间范围,逐分片爬取
     pub async fn start_history_crawl(&self, task_id: &str) -> Result<(), String> {
         // 1. 加载任务
-        let mut task = self.redis_service.load_task(task_id).await
+        let mut task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
         // 2. 验证任务状态
@@ -115,7 +116,9 @@ impl CrawlService {
         // 3. 转换状态
         task.transition_to(crate::models::CrawlStatus::HistoryCrawling)
             .map_err(|e| format!("状态转换失败: {}", e))?;
-        self.redis_service.save_crawl_task(&task).await
+        self.redis_service
+            .save_crawl_task(&task)
+            .await
             .map_err(|e| format!("保存任务失败: {}", e))?;
 
         // 4. 检查是否有其他任务正在运行
@@ -125,7 +128,8 @@ impl CrawlService {
 
         // 5. 创建取消令牌
         let cancel_token = CancellationToken::new();
-        self.register_active_task(task_id, cancel_token.clone()).await;
+        self.register_active_task(task_id, cancel_token.clone())
+            .await;
 
         // 6. 准备时间范围
         let now = Utc::now();
@@ -136,7 +140,8 @@ impl CrawlService {
         let start_time = floor_to_hour(event_start);
 
         // 7. 拆分时间范围
-        let time_shards = self.time_shard_service
+        let time_shards = self
+            .time_shard_service
             .split_time_range_if_needed(start_time, end_time, &task.keyword)
             .await
             .map_err(|e| format!("时间分片失败: {}", e))?;
@@ -171,7 +176,10 @@ impl CrawlService {
     /// 从max_post_time到现在
     pub async fn start_incremental_crawl(&self, task_id: &str) -> Result<(), String> {
         // 1. 加载任务
-        let mut task = self.redis_service.load_task(task_id).await
+        let mut task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
         // 2. 验证任务状态
@@ -180,13 +188,16 @@ impl CrawlService {
         }
 
         // 3. 验证max_post_time存在
-        let max_post_time = task.max_post_time
+        let max_post_time = task
+            .max_post_time
             .ok_or_else(|| "增量更新需要max_post_time".to_string())?;
 
         // 4. 转换状态
         task.transition_to(crate::models::CrawlStatus::IncrementalCrawling)
             .map_err(|e| format!("状态转换失败: {}", e))?;
-        self.redis_service.save_crawl_task(&task).await
+        self.redis_service
+            .save_crawl_task(&task)
+            .await
             .map_err(|e| format!("保存任务失败: {}", e))?;
 
         // 5. 检查是否有其他任务正在运行
@@ -196,7 +207,8 @@ impl CrawlService {
 
         // 6. 创建取消令牌
         let cancel_token = CancellationToken::new();
-        self.register_active_task(task_id, cancel_token.clone()).await;
+        self.register_active_task(task_id, cancel_token.clone())
+            .await;
 
         // 7. 准备时间范围
         let start_time = ceil_to_hour(max_post_time);
@@ -229,7 +241,10 @@ impl CrawlService {
     /// 从检查点恢复爬取
     pub async fn resume_crawl(&self, task_id: &str) -> Result<(), String> {
         // 1. 加载任务
-        let mut task = self.redis_service.load_task(task_id).await
+        let mut task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
         // 2. 验证任务状态
@@ -238,7 +253,10 @@ impl CrawlService {
         }
 
         // 3. 加载检查点
-        let checkpoint = self.redis_service.load_checkpoint(task_id).await
+        let checkpoint = self
+            .redis_service
+            .load_checkpoint(task_id)
+            .await
             .map_err(|e| format!("加载检查点失败: {}", e))?
             .ok_or_else(|| "未找到检查点".to_string())?;
 
@@ -250,7 +268,9 @@ impl CrawlService {
 
         task.transition_to(target_status)
             .map_err(|e| format!("状态转换失败: {}", e))?;
-        self.redis_service.save_crawl_task(&task).await
+        self.redis_service
+            .save_crawl_task(&task)
+            .await
             .map_err(|e| format!("保存任务失败: {}", e))?;
 
         // 5. 检查是否有其他任务正在运行
@@ -260,7 +280,8 @@ impl CrawlService {
 
         // 6. 创建取消令牌
         let cancel_token = CancellationToken::new();
-        self.register_active_task(task_id, cancel_token.clone()).await;
+        self.register_active_task(task_id, cancel_token.clone())
+            .await;
 
         tracing::info!(
             任务ID = %task_id,
@@ -289,7 +310,10 @@ impl CrawlService {
     /// 取消爬取
     pub async fn cancel_crawl(&self, task_id: &str) -> Result<(), String> {
         // 1. 加载任务
-        let mut task = self.redis_service.load_task(task_id).await
+        let mut task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
         // 2. 验证任务状态
@@ -309,7 +333,9 @@ impl CrawlService {
         // 4. 更新状态为暂停
         task.transition_to(crate::models::CrawlStatus::Paused)
             .map_err(|e| format!("状态转换失败: {}", e))?;
-        self.redis_service.save_crawl_task(&task).await
+        self.redis_service
+            .save_crawl_task(&task)
+            .await
             .map_err(|e| format!("保存任务失败: {}", e))?;
 
         Ok(())
@@ -334,27 +360,32 @@ impl CrawlService {
             }
 
             // 创建检查点
-            let mut checkpoint = CrawlCheckpoint::new_backward(
-                task_id.to_string(),
-                *shard_start,
-                *shard_end,
-            );
+            let mut checkpoint =
+                CrawlCheckpoint::new_backward(task_id.to_string(), *shard_start, *shard_end);
 
             // 爬取当前分片
-            self.crawl_time_shard(task_id, &mut checkpoint, &cancel_token).await?;
+            self.crawl_time_shard(task_id, &mut checkpoint, &cancel_token)
+                .await?;
 
             // 保存检查点
-            self.redis_service.save_checkpoint(&checkpoint).await
+            self.redis_service
+                .save_checkpoint(&checkpoint)
+                .await
                 .map_err(|e| format!("保存检查点失败: {}", e))?;
         }
 
         // 所有分片完成,标记任务为HistoryCompleted
-        let mut task = self.redis_service.load_task(task_id).await
+        let mut task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
         task.transition_to(crate::models::CrawlStatus::HistoryCompleted)
             .map_err(|e| format!("状态转换失败: {}", e))?;
-        self.redis_service.save_crawl_task(&task).await
+        self.redis_service
+            .save_crawl_task(&task)
+            .await
             .map_err(|e| format!("保存任务失败: {}", e))?;
 
         // 移除活跃任务
@@ -362,7 +393,12 @@ impl CrawlService {
 
         // 推送完成事件
         let duration = start_time.elapsed().as_secs();
-        self.emit_completed_event(task_id, CrawlStatus::HistoryCompleted, task.crawled_count, duration);
+        self.emit_completed_event(
+            task_id,
+            CrawlStatus::HistoryCompleted,
+            task.crawled_count,
+            duration,
+        );
 
         tracing::info!(
             任务ID = %task_id,
@@ -389,16 +425,25 @@ impl CrawlService {
         checkpoint.shard_end_time = end_time;
 
         // 爬取
-        self.crawl_time_shard(task_id, &mut checkpoint, &cancel_token).await?;
+        self.crawl_time_shard(task_id, &mut checkpoint, &cancel_token)
+            .await?;
 
         // 移除活跃任务
         self.unregister_active_task(task_id).await;
 
         // 推送完成事件
-        let task = self.redis_service.load_task(task_id).await
+        let task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
         let duration = crawl_start.elapsed().as_secs();
-        self.emit_completed_event(task_id, CrawlStatus::IncrementalCrawling, task.crawled_count, duration);
+        self.emit_completed_event(
+            task_id,
+            CrawlStatus::IncrementalCrawling,
+            task.crawled_count,
+            duration,
+        );
 
         tracing::info!(
             任务ID = %task_id,
@@ -421,28 +466,35 @@ impl CrawlService {
         match checkpoint.direction {
             CrawlDirection::Backward => {
                 // 获取所有待处理的时间分片
-                let task = self.redis_service.load_task(task_id).await
+                let task = self
+                    .redis_service
+                    .load_task(task_id)
+                    .await
                     .map_err(|e| format!("加载任务失败: {}", e))?;
 
                 let end_time = ceil_to_hour(Utc::now());
                 let start_time = floor_to_hour(task.event_start_time);
 
-                let time_shards = self.time_shard_service
+                let time_shards = self
+                    .time_shard_service
                     .split_time_range_if_needed(start_time, end_time, &task.keyword)
                     .await
                     .map_err(|e| format!("时间分片失败: {}", e))?;
 
                 // 过滤掉已完成的分片
-                let remaining_shards: Vec<_> = time_shards.into_iter()
+                let remaining_shards: Vec<_> = time_shards
+                    .into_iter()
                     .filter(|shard| !checkpoint.completed_shards.contains(shard))
                     .collect();
 
                 // 继续爬取剩余分片
-                self.execute_backward_crawl(task_id, remaining_shards, cancel_token).await
+                self.execute_backward_crawl(task_id, remaining_shards, cancel_token)
+                    .await
             }
             CrawlDirection::Forward => {
                 // 继续增量更新
-                self.crawl_time_shard(task_id, &mut checkpoint, &cancel_token).await?;
+                self.crawl_time_shard(task_id, &mut checkpoint, &cancel_token)
+                    .await?;
                 self.unregister_active_task(task_id).await;
                 Ok(())
             }
@@ -492,14 +544,23 @@ impl CrawlService {
                     tracing::warn!(任务ID = %task_id, "检测到验证码,自动暂停");
 
                     // 推送错误事件
-                    self.emit_error_event(task_id, "检测到验证码".to_string(), ErrorCode::CaptchaDetected);
+                    self.emit_error_event(
+                        task_id,
+                        "检测到验证码".to_string(),
+                        ErrorCode::CaptchaDetected,
+                    );
 
                     // 自动暂停
-                    let mut task = self.redis_service.load_task(task_id).await
+                    let mut task = self
+                        .redis_service
+                        .load_task(task_id)
+                        .await
                         .map_err(|e| format!("加载任务失败: {}", e))?;
                     task.transition_to(crate::models::CrawlStatus::Paused)
                         .map_err(|e| format!("状态转换失败: {}", e))?;
-                    self.redis_service.save_crawl_task(&task).await
+                    self.redis_service
+                        .save_crawl_task(&task)
+                        .await
                         .map_err(|e| format!("保存任务失败: {}", e))?;
 
                     return Err("CAPTCHA_DETECTED".to_string());
@@ -587,18 +648,25 @@ impl CrawlService {
 
         // 保存到Redis
         if !posts.is_empty() {
-            self.redis_service.save_posts(task_id, &posts).await
+            self.redis_service
+                .save_posts(task_id, &posts)
+                .await
                 .map_err(|e| format!("保存帖子失败: {}", e))?;
 
             // 更新任务进度
-            let mut task = self.redis_service.load_task(task_id).await
+            let mut task = self
+                .redis_service
+                .load_task(task_id)
+                .await
                 .map_err(|e| format!("加载任务失败: {}", e))?;
 
             for post in &posts {
                 task.update_progress(post.created_at, 1);
             }
 
-            self.redis_service.save_crawl_task(&task).await
+            self.redis_service
+                .save_crawl_task(&task)
+                .await
                 .map_err(|e| format!("保存任务失败: {}", e))?;
 
             // 推送进度事件
@@ -629,15 +697,21 @@ impl CrawlService {
         checkpoint: &CrawlCheckpoint,
         page: u32,
     ) -> Result<PlaywrightCrawlResult, String> {
+        use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::connect_async;
         use tokio_tungstenite::tungstenite::Message;
-        use futures_util::{SinkExt, StreamExt};
 
         // 获取任务和cookies
-        let task = self.redis_service.load_task(task_id).await
+        let task = self
+            .redis_service
+            .load_task(task_id)
+            .await
             .map_err(|e| format!("加载任务失败: {}", e))?;
 
-        let cookies = self.redis_service.load_task_cookies(task_id).await
+        let cookies = self
+            .redis_service
+            .load_task_cookies(task_id)
+            .await
             .map_err(|e| format!("加载任务cookies失败: {}", e))?;
 
         // 构建时间参数
@@ -668,31 +742,33 @@ impl CrawlService {
 
         // 连接到Playwright服务器
         let ws_url = "ws://127.0.0.1:9224";
-        let (ws_stream, _) = connect_async(ws_url).await
+        let (ws_stream, _) = connect_async(ws_url)
+            .await
             .map_err(|e| format!("连接Playwright服务器失败: {}", e))?;
 
         let (mut write, mut read) = ws_stream.split();
 
         // 发送请求
-        let message_text = serde_json::to_string(&message)
-            .map_err(|e| format!("序列化请求失败: {}", e))?;
+        let message_text =
+            serde_json::to_string(&message).map_err(|e| format!("序列化请求失败: {}", e))?;
 
-        write.send(Message::Text(message_text)).await
+        write
+            .send(Message::Text(message_text))
+            .await
             .map_err(|e| format!("发送消息失败: {}", e))?;
 
         tracing::debug!(任务ID = %task_id, "请求已发送,等待响应");
 
         // 接收响应
-        let response = tokio::time::timeout(
-            tokio::time::Duration::from_secs(30),
-            read.next()
-        ).await
+        let response = tokio::time::timeout(tokio::time::Duration::from_secs(30), read.next())
+            .await
             .map_err(|_| "等待响应超时".to_string())?
             .ok_or_else(|| "连接已关闭".to_string())?
             .map_err(|e| format!("接收响应失败: {}", e))?;
 
         // 解析响应
-        let response_text = response.to_text()
+        let response_text = response
+            .to_text()
             .map_err(|e| format!("解析响应文本失败: {}", e))?;
 
         tracing::debug!(
@@ -708,15 +784,19 @@ impl CrawlService {
             error: Option<String>,
         }
 
-        let response_data: PlaywrightResponse = serde_json::from_str(response_text)
-            .map_err(|e| format!("解析响应JSON失败: {}", e))?;
+        let response_data: PlaywrightResponse =
+            serde_json::from_str(response_text).map_err(|e| format!("解析响应JSON失败: {}", e))?;
 
         if !response_data.success {
-            let error = response_data.error.unwrap_or_else(|| "未知错误".to_string());
+            let error = response_data
+                .error
+                .unwrap_or_else(|| "未知错误".to_string());
             return Err(format!("Playwright爬取失败: {}", error));
         }
 
-        response_data.data.ok_or_else(|| "响应中缺少data字段".to_string())
+        response_data
+            .data
+            .ok_or_else(|| "响应中缺少data字段".to_string())
     }
 
     /// 处理帖子数据
@@ -731,7 +811,10 @@ impl CrawlService {
 
         for raw in raw_posts {
             // 检查是否已存在
-            if self.redis_service.check_post_exists(task_id, &raw.id).await
+            if self
+                .redis_service
+                .check_post_exists(task_id, &raw.id)
+                .await
                 .map_err(|e| format!("检查帖子存在性失败: {}", e))?
             {
                 continue; // 去重
@@ -755,7 +838,8 @@ impl CrawlService {
             );
 
             // 验证
-            post.validate().map_err(|e| format!("帖子验证失败: {}", e))?;
+            post.validate()
+                .map_err(|e| format!("帖子验证失败: {}", e))?;
 
             posts.push(post);
         }

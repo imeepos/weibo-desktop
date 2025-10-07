@@ -170,10 +170,7 @@ mod tests {
         failure_reason: Option<&str>,
     ) {
         let key = format!("crawl:task:{}", task_id);
-        redis
-            .hset(&key, "id", task_id.to_string())
-            .await
-            .unwrap();
+        redis.hset(&key, "id", task_id.to_string()).await.unwrap();
         redis
             .hset(&key, "keyword", keyword.to_string())
             .await
@@ -412,15 +409,9 @@ mod tests {
         .await;
 
         create_test_task(
-            &redis,
-            "task3",
-            "春节",
-            "Created",
-            1704067200,
-            3000,
+            &redis, "task3", "春节", "Created", 1704067200, 3000,
             1707652800, // 2024-02-10 10:00:00
-            1707652800,
-            None,
+            1707652800, None,
         )
         .await;
 

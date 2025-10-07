@@ -108,7 +108,9 @@ pub fn init() -> Result<(), io::Error> {
 /// # 重要提示
 /// 返回的guard必须被调用者保存,直到应用退出。
 /// 如果guard被drop,日志写入器将被关闭。
-pub fn init_logging() -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
+#[allow(dead_code)]
+pub fn init_logging(
+) -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
     use tracing_appender::rolling;
 
     // 1. 获取应用数据目录
@@ -132,8 +134,7 @@ pub fn init_logging() -> Result<tracing_appender::non_blocking::WorkerGuard, Box
 
     // 5. 配置JSON格式输出
     // 6. 设置INFO级别
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     // 7. 初始化subscriber
     tracing_subscriber::registry()
@@ -145,7 +146,7 @@ pub fn init_logging() -> Result<tracing_appender::non_blocking::WorkerGuard, Box
                 .with_thread_ids(false)
                 .with_thread_names(false)
                 .with_file(false)
-                .with_line_number(false)
+                .with_line_number(false),
         )
         .with(env_filter)
         .init();
@@ -408,9 +409,19 @@ mod tests {
         let _guard = result.unwrap();
 
         // 写入测试日志 - 使用新的中文日志宏
-        crate::log_validation_event!("依赖检测完成", 依赖名称 = "node", 状态 = "满足", 版本 = "20.10.0");
+        crate::log_validation_event!(
+            "依赖检测完成",
+            依赖名称 = "node",
+            状态 = "满足",
+            版本 = "20.10.0"
+        );
         crate::log_error!("依赖缺失", 依赖名称 = "redis", 期望状态 = "已安装");
-        crate::log_warn!("版本不匹配", 依赖名称 = "playwright", 检测版本 = "1.35.0", 要求版本 = "1.40.0");
+        crate::log_warn!(
+            "版本不匹配",
+            依赖名称 = "playwright",
+            检测版本 = "1.35.0",
+            要求版本 = "1.40.0"
+        );
 
         // 验证日志文件已创建
         if log_dir.exists() {

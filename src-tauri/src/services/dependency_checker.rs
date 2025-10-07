@@ -7,11 +7,11 @@
 //! - 并发检测协调和进度事件发射
 
 use crate::models::{dependency::*, errors::*};
-use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::sync::Mutex;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tracing::{info, warn, error, debug};
+use tokio::sync::Mutex;
+use tracing::{debug, error, info, warn};
 
 /// 依赖检测服务
 pub struct DependencyChecker;
@@ -63,16 +63,24 @@ impl DependencyChecker {
                 let start_time = std::time::Instant::now();
 
                 // 发射检测开始事件
-                debug!("开始检测依赖项: {} (第 {}/{})", dep.name, index + 1, total_count);
+                debug!(
+                    "开始检测依赖项: {} (第 {}/{})",
+                    dep.name,
+                    index + 1,
+                    total_count
+                );
 
-                if let Err(e) = app_handle.emit("dependency-check-progress", &serde_json::json!({
-                    "dependency_id": dep.id,
-                    "dependency_name": dep.name,
-                    "status": "checking",
-                    "current_index": index + 1,
-                    "total_count": total_count,
-                    "progress_percent": ((index) as f64 / total_count as f64) * 100.0
-                })) {
+                if let Err(e) = app_handle.emit(
+                    "dependency-check-progress",
+                    &serde_json::json!({
+                        "dependency_id": dep.id,
+                        "dependency_name": dep.name,
+                        "status": "checking",
+                        "current_index": index + 1,
+                        "total_count": total_count,
+                        "progress_percent": ((index) as f64 / total_count as f64) * 100.0
+                    }),
+                ) {
                     warn!("发射检测开始事件失败: {}", e);
                 }
 
@@ -111,17 +119,20 @@ impl DependencyChecker {
                     CheckStatus::Corrupted => "corrupted",
                 };
 
-                if let Err(e) = app_handle.emit("dependency-check-progress", &serde_json::json!({
-                    "dependency_id": dep.id,
-                    "dependency_name": dep.name,
-                    "status": status_str,
-                    "detected_version": final_result.detected_version,
-                    "error_details": final_result.error_details,
-                    "current_index": index + 1,
-                    "total_count": total_count,
-                    "progress_percent": ((index + 1) as f64 / total_count as f64) * 100.0,
-                    "duration_ms": duration
-                })) {
+                if let Err(e) = app_handle.emit(
+                    "dependency-check-progress",
+                    &serde_json::json!({
+                        "dependency_id": dep.id,
+                        "dependency_name": dep.name,
+                        "status": status_str,
+                        "detected_version": final_result.detected_version,
+                        "error_details": final_result.error_details,
+                        "current_index": index + 1,
+                        "total_count": total_count,
+                        "progress_percent": ((index + 1) as f64 / total_count as f64) * 100.0,
+                        "duration_ms": duration
+                    }),
+                ) {
                     warn!("发射检测完成事件失败: {}", e);
                 }
 
@@ -152,10 +163,8 @@ impl DependencyChecker {
 
         // 收集并排序结果
         let mut results_guard = results.lock().await;
-        let collected_results: Vec<DependencyCheckResult> = results_guard
-            .drain()
-            .map(|(_, result)| result)
-            .collect();
+        let collected_results: Vec<DependencyCheckResult> =
+            results_guard.drain().map(|(_, result)| result).collect();
 
         // 按依赖项名称排序以确保结果顺序一致
         let mut sorted_results = collected_results;
@@ -178,15 +187,24 @@ impl DependencyChecker {
     }
 
     /// 检测单个依赖项
-    pub async fn check_dependency(&self, dependency: &Dependency) -> Result<DependencyCheckResult, DependencyError> {
+    pub async fn check_dependency(
+        &self,
+        dependency: &Dependency,
+    ) -> Result<DependencyCheckResult, DependencyError> {
         Self::check_single_dependency(dependency).await
     }
 
     /// 检测单个依赖项的具体实现
     ///
     /// 根据依赖项的检测方法执行相应的检测逻辑
-    async fn check_single_dependency(dependency: &Dependency) -> Result<DependencyCheckResult, DependencyError> {
-        debug!("检测依赖项: {} (方法: {})", dependency.name, dependency.check_method_name());
+    async fn check_single_dependency(
+        dependency: &Dependency,
+    ) -> Result<DependencyCheckResult, DependencyError> {
+        debug!(
+            "检测依赖项: {} (方法: {})",
+            dependency.name,
+            dependency.check_method_name()
+        );
 
         let result = match &dependency.check_method {
             CheckMethod::Executable { name, version_args } => {
@@ -195,14 +213,13 @@ impl DependencyChecker {
             CheckMethod::Service { host, port } => {
                 Self::check_service_dependency(&dependency.id, host, *port).await?
             }
-            CheckMethod::File { path } => {
-                Self::check_file_dependency(&dependency.id, path).await?
-            }
+            CheckMethod::File { path } => Self::check_file_dependency(&dependency.id, path).await?,
         };
 
         // 如果检测到版本，还需要验证版本是否满足要求
         let final_result = if let Some(detected_version) = &result.detected_version {
-            let version_valid = Self::validate_version(detected_version, &dependency.version_requirement);
+            let version_valid =
+                Self::validate_version(detected_version, &dependency.version_requirement);
             if version_valid {
                 result
             } else {
@@ -261,7 +278,10 @@ impl DependencyChecker {
         let matches = version_req.matches(&current_version);
         debug!(
             "版本比较结果: {} {} {} -> {}",
-            current, if matches { "✓" } else { "✗" }, required, matches
+            current,
+            if matches { "✓" } else { "✗" },
+            required,
+            matches
         );
 
         matches
@@ -328,7 +348,11 @@ impl DependencyChecker {
     }
 
     /// 检测服务依赖
-    pub async fn check_service_dependency(dependency_id: &str, host: &str, port: u16) -> Result<DependencyCheckResult, DependencyError> {
+    pub async fn check_service_dependency(
+        dependency_id: &str,
+        host: &str,
+        port: u16,
+    ) -> Result<DependencyCheckResult, DependencyError> {
         let start_time = std::time::Instant::now();
 
         debug!("检测服务连接: {}:{}", host, port);
@@ -357,7 +381,10 @@ impl DependencyChecker {
     }
 
     /// 检测文件依赖
-    pub async fn check_file_dependency(dependency_id: &str, path: &str) -> Result<DependencyCheckResult, DependencyError> {
+    pub async fn check_file_dependency(
+        dependency_id: &str,
+        path: &str,
+    ) -> Result<DependencyCheckResult, DependencyError> {
         let start_time = std::time::Instant::now();
 
         debug!("检测文件存在性: {}", path);
@@ -391,14 +418,14 @@ impl DependencyChecker {
     /// - "node v20.10.0" -> "20.10.0"
     /// - "pnpm 8.15.0" -> "8.15.0"
     /// - "Redis server v=7.2.3" -> "7.2.3"
-  pub fn parse_version_from_output(output: &str) -> Option<String> {
+    pub fn parse_version_from_output(output: &str) -> Option<String> {
         let trimmed = output.trim();
 
         // 常见版本号正则模式
         let patterns = [
-            r"v?(\d+\.\d+\.\d+[a-zA-Z0-9\.\-]*)",              // v1.2.3-alpha.1 或 1.2.3-beta.2
-            r"version[:\s]+(\d+\.\d+\.\d+[a-zA-Z0-9\.\-]*)",   // version: 1.2.3-alpha.1 或 version 1.2.3-beta.2
-            r"(\d+\.\d+\.\d+[a-zA-Z0-9\.\-]*)[^\d]*$",         // 行尾的版本号
+            r"v?(\d+\.\d+\.\d+[a-zA-Z0-9\.\-]*)", // v1.2.3-alpha.1 或 1.2.3-beta.2
+            r"version[:\s]+(\d+\.\d+\.\d+[a-zA-Z0-9\.\-]*)", // version: 1.2.3-alpha.1 或 version 1.2.3-beta.2
+            r"(\d+\.\d+\.\d+[a-zA-Z0-9\.\-]*)[^\d]*$",       // 行尾的版本号
         ];
 
         for pattern in &patterns {
@@ -566,7 +593,12 @@ mod tests {
 
         for (input, expected) in test_cases {
             let result = DependencyChecker::parse_version_from_output(input);
-            assert_eq!(result, expected.map(String::from), "Failed for input: {}", input);
+            assert_eq!(
+                result,
+                expected.map(String::from),
+                "Failed for input: {}",
+                input
+            );
         }
     }
 
@@ -622,8 +654,32 @@ mod tests {
         let default_checker = DependencyChecker::default();
 
         // 测试创建和默认值
-        assert_eq!(checker.check_dependency(&create_test_dependency("test", CheckMethod::File { path: "/workspace/desktop/src-tauri/Cargo.toml".to_string() })).await.unwrap().dependency_id, "test");
-        assert_eq!(default_checker.check_dependency(&create_test_dependency("default", CheckMethod::File { path: "/workspace/desktop/src-tauri/Cargo.toml".to_string() })).await.unwrap().dependency_id, "default");
+        assert_eq!(
+            checker
+                .check_dependency(&create_test_dependency(
+                    "test",
+                    CheckMethod::File {
+                        path: "/workspace/desktop/src-tauri/Cargo.toml".to_string()
+                    }
+                ))
+                .await
+                .unwrap()
+                .dependency_id,
+            "test"
+        );
+        assert_eq!(
+            default_checker
+                .check_dependency(&create_test_dependency(
+                    "default",
+                    CheckMethod::File {
+                        path: "/workspace/desktop/src-tauri/Cargo.toml".to_string()
+                    }
+                ))
+                .await
+                .unwrap()
+                .dependency_id,
+            "default"
+        );
     }
 
     #[test]
@@ -645,11 +701,17 @@ mod tests {
     #[test]
     fn test_dependency_check_result_methods() {
         // 测试DependencyCheckResult的辅助方法
-        let success_result = DependencyCheckResult::success("test".to_string(), Some("1.0.0".to_string()), 100);
+        let success_result =
+            DependencyCheckResult::success("test".to_string(), Some("1.0.0".to_string()), 100);
         assert!(success_result.is_satisfied());
         assert!(!success_result.is_failed());
 
-        let failure_result = DependencyCheckResult::failure("test".to_string(), CheckStatus::Missing, "Not found".to_string(), 100);
+        let failure_result = DependencyCheckResult::failure(
+            "test".to_string(),
+            CheckStatus::Missing,
+            "Not found".to_string(),
+            100,
+        );
         assert!(!failure_result.is_satisfied());
         assert!(failure_result.is_failed());
     }
