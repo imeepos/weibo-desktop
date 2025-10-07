@@ -1,4 +1,7 @@
-use crate::services::{RedisService, SessionManager, ValidationService, WeiboApiClient};
+use crate::services::{
+    CrawlService, RedisService, SessionManager, TimeShardService, ValidationService,
+    WeiboApiClient,
+};
 use std::sync::Arc;
 
 /// 应用全局状态
@@ -8,6 +11,7 @@ use std::sync::Arc;
 /// - weibo_api: 微博平台交互 (Playwright自动化)
 /// - validator: Cookies可信度保障
 /// - session_manager: 二维码会话生命周期管理
+/// - crawl_service: 微博爬取任务协调器 (003功能)
 pub struct AppState {
     /// Redis服务: 唯一的数据存储入口
     pub redis: Arc<RedisService>,
@@ -20,6 +24,9 @@ pub struct AppState {
 
     /// 会话管理器: 防止资源泄露的看守者
     pub session_manager: Arc<SessionManager>,
+
+    /// 爬取服务: 微博爬取任务协调器 (003功能)
+    pub crawl_service: Arc<CrawlService>,
 }
 
 impl AppState {
@@ -44,11 +51,18 @@ impl AppState {
         ));
         let session_manager = Arc::new(SessionManager::new());
 
+        // 初始化003功能的服务
+        let time_shard_service = Arc::new(TimeShardService::new());
+        let crawl_service = Arc::new(CrawlService::new(
+            Arc::clone(&redis),
+            time_shard_service,
+        ));
+
         tracing::info!(
             redis_url = %redis_url,
             playwright_server = %playwright_server_url,
             playwright_validation = %playwright_validation_script,
-            "AppState initialized with session manager"
+            "AppState initialized with session manager and crawl service"
         );
 
         Ok(Self {
@@ -56,6 +70,7 @@ impl AppState {
             weibo_api,
             validator,
             session_manager,
+            crawl_service,
         })
     }
 }

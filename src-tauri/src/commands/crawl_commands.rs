@@ -8,7 +8,7 @@
 //! - export_crawl_data: 导出爬取数据(JSON/CSV)
 //! - list_crawl_tasks: 列出所有任务
 
-use crate::models::{CrawlStatus, CrawlTask};
+use crate::models::{CrawlCheckpoint, CrawlStatus, CrawlTask};
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -56,6 +56,13 @@ impl CommandError {
 
     fn task_not_found(task_id: &str) -> Self {
         Self::new("TASK_NOT_FOUND", format!("任务 {} 不存在", task_id))
+    }
+
+    fn checkpoint_not_found(task_id: &str) -> Self {
+        Self::new(
+            "CHECKPOINT_NOT_FOUND",
+            format!("任务 {} 没有检查点", task_id),
+        )
     }
 
     fn invalid_status(current_status: &str, allowed: &str) -> Self {
@@ -150,6 +157,72 @@ pub struct PauseCrawlResponse {
     pub checkpoint: CheckpointInfo,
 }
 
+/// 获取任务详情请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCrawlTaskRequest {
+    pub task_id: String,
+}
+
+/// 任务详情响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrawlTaskDetail {
+    pub task_id: String,
+    pub keyword: String,
+    pub event_start_time: String,
+    pub status: String,
+    pub min_post_time: Option<String>,
+    pub max_post_time: Option<String>,
+    pub crawled_count: u64,
+    pub created_at: String,
+    pub updated_at: String,
+    pub failure_reason: Option<String>,
+}
+
+/// 获取检查点请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCrawlCheckpointRequest {
+    pub task_id: String,
+}
+
+/// 时间分片范围
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletedShard {
+    pub start: String,
+    pub end: String,
+}
+
+/// 检查点响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrawlCheckpointResponse {
+    pub task_id: String,
+    pub shard_start_time: String,
+    pub shard_end_time: String,
+    pub current_page: u32,
+    pub direction: String,
+    pub completed_shards: Vec<CompletedShard>,
+    pub saved_at: String,
+}
+
+/// 取消任务请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelCrawlRequest {
+    pub task_id: String,
+}
+
+/// 取消任务响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelCrawlResponse {
+    pub message: String,
+    pub status: String,
+}
+
 /// 查询进度请求
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -242,6 +315,49 @@ pub struct ListCrawlTasksResponse {
     pub total: usize,
 }
 
+impl From<&CrawlTask> for CrawlTaskDetail {
+    fn from(task: &CrawlTask) -> Self {
+        Self {
+            task_id: task.id.clone(),
+            keyword: task.keyword.clone(),
+            event_start_time: task.event_start_time.to_rfc3339(),
+            status: task.status.as_str().to_string(),
+            min_post_time: task.min_post_time.map(|t| t.to_rfc3339()),
+            max_post_time: task.max_post_time.map(|t| t.to_rfc3339()),
+            crawled_count: task.crawled_count,
+            created_at: task.created_at.to_rfc3339(),
+            updated_at: task.updated_at.to_rfc3339(),
+            failure_reason: task.failure_reason.clone(),
+        }
+    }
+}
+
+impl From<&CrawlCheckpoint> for CrawlCheckpointResponse {
+    fn from(checkpoint: &CrawlCheckpoint) -> Self {
+        let completed_shards = checkpoint
+            .completed_shards
+            .iter()
+            .map(|(start, end)| CompletedShard {
+                start: start.to_rfc3339(),
+                end: end.to_rfc3339(),
+            })
+            .collect();
+
+        Self {
+            task_id: checkpoint.task_id.clone(),
+            shard_start_time: checkpoint.shard_start_time.to_rfc3339(),
+            shard_end_time: checkpoint.shard_end_time.to_rfc3339(),
+            current_page: checkpoint.current_page,
+            direction: match checkpoint.direction {
+                crate::models::CrawlDirection::Backward => "Backward".to_string(),
+                crate::models::CrawlDirection::Forward => "Forward".to_string(),
+            },
+            completed_shards,
+            saved_at: checkpoint.saved_at.to_rfc3339(),
+        }
+    }
+}
+
 // ==================== Tauri Commands ====================
 
 /// 创建爬取任务
@@ -322,10 +438,12 @@ pub async fn start_crawl(
     match task.status {
         CrawlStatus::Created => {
             // 启动历史回溯
-            // TODO: 需要在AppState中添加CrawlService
-            // state.crawl_service.start_history_crawl(&request.task_id).await
-            // 目前返回占位响应
-            tracing::warn!("CrawlService未集成到AppState,暂时返回占位响应");
+            state
+                .crawl_service
+                .start_history_crawl(&request.task_id)
+                .await
+                .map_err(|e| CommandError::storage_error(&e))?;
+
             Ok(StartCrawlResponse {
                 message: "任务已启动,开始历史回溯".to_string(),
                 direction: "Backward".to_string(),
@@ -333,17 +451,25 @@ pub async fn start_crawl(
         }
         CrawlStatus::Paused => {
             // 恢复爬取
-            // TODO: state.crawl_service.resume_crawl(&request.task_id).await
-            tracing::warn!("CrawlService未集成到AppState,暂时返回占位响应");
+            state
+                .crawl_service
+                .resume_crawl(&request.task_id)
+                .await
+                .map_err(|e| CommandError::storage_error(&e))?;
+
             Ok(StartCrawlResponse {
                 message: "任务已恢复,从检查点继续爬取".to_string(),
-                direction: "Backward".to_string(),
+                direction: "Backward".to_string(), // direction根据checkpoint确定
             })
         }
         CrawlStatus::HistoryCompleted => {
             // 启动增量更新
-            // TODO: state.crawl_service.start_incremental_crawl(&request.task_id).await
-            tracing::warn!("CrawlService未集成到AppState,暂时返回占位响应");
+            state
+                .crawl_service
+                .start_incremental_crawl(&request.task_id)
+                .await
+                .map_err(|e| CommandError::storage_error(&e))?;
+
             Ok(StartCrawlResponse {
                 message: "任务已启动,开始增量更新".to_string(),
                 direction: "Forward".to_string(),
@@ -367,7 +493,7 @@ pub async fn pause_crawl(
     state: State<'_, AppState>,
 ) -> Result<PauseCrawlResponse, CommandError> {
     // 1. 加载任务
-    let task = state
+    let mut task = state
         .redis
         .load_task(&request.task_id)
         .await
@@ -376,11 +502,20 @@ pub async fn pause_crawl(
     // 2. 验证状态
     match task.status {
         CrawlStatus::HistoryCrawling | CrawlStatus::IncrementalCrawling => {
-            // 可以暂停
-            // TODO: state.crawl_service.cancel_crawl(&request.task_id).await
-            tracing::warn!("CrawlService未集成到AppState,暂时返回占位响应");
+            // 调用CrawlService取消爬取
+            state
+                .crawl_service
+                .cancel_crawl(&request.task_id)
+                .await
+                .map_err(|e| CommandError::storage_error(&e))?;
 
-            // 加载检查点(如果存在)
+            // 加载更新后的任务和检查点
+            let updated_task = state
+                .redis
+                .load_task(&request.task_id)
+                .await
+                .map_err(|_| CommandError::task_not_found(&request.task_id))?;
+
             let checkpoint = state
                 .redis
                 .load_checkpoint(&request.task_id)
@@ -392,7 +527,7 @@ pub async fn pause_crawl(
                     shard_start_time: cp.shard_start_time.to_rfc3339(),
                     shard_end_time: cp.shard_end_time.to_rfc3339(),
                     current_page: cp.current_page,
-                    crawled_count: task.crawled_count,
+                    crawled_count: updated_task.crawled_count,
                 }
             } else {
                 // 如果没有检查点,返回默认值
@@ -400,7 +535,7 @@ pub async fn pause_crawl(
                     shard_start_time: Utc::now().to_rfc3339(),
                     shard_end_time: Utc::now().to_rfc3339(),
                     current_page: 1,
-                    crawled_count: task.crawled_count,
+                    crawled_count: updated_task.crawled_count,
                 }
             };
 
@@ -409,6 +544,79 @@ pub async fn pause_crawl(
                 checkpoint: checkpoint_info,
             })
         }
+        _ => Err(CommandError::invalid_status(
+            task.status.as_str(),
+            "HistoryCrawling/IncrementalCrawling",
+        )),
+    }
+}
+
+/// 获取任务详情
+#[tauri::command]
+pub async fn get_crawl_task(
+    request: GetCrawlTaskRequest,
+    state: State<'_, AppState>,
+) -> Result<CrawlTaskDetail, CommandError> {
+    let task = state
+        .redis
+        .load_task(&request.task_id)
+        .await
+        .map_err(|_| CommandError::task_not_found(&request.task_id))?;
+
+    Ok(CrawlTaskDetail::from(&task))
+}
+
+/// 获取检查点详情
+#[tauri::command]
+pub async fn get_crawl_checkpoint(
+    request: GetCrawlCheckpointRequest,
+    state: State<'_, AppState>,
+) -> Result<CrawlCheckpointResponse, CommandError> {
+    let checkpoint = state
+        .redis
+        .load_checkpoint(&request.task_id)
+        .await
+        .map_err(|e| CommandError::storage_error(&format!("加载检查点失败: {}", e)))?;
+
+    match checkpoint {
+        Some(cp) => Ok(CrawlCheckpointResponse::from(&cp)),
+        None => Err(CommandError::checkpoint_not_found(&request.task_id)),
+    }
+}
+
+/// 取消爬取任务
+#[tauri::command]
+pub async fn cancel_crawl(
+    request: CancelCrawlRequest,
+    state: State<'_, AppState>,
+) -> Result<CancelCrawlResponse, CommandError> {
+    let mut task = state
+        .redis
+        .load_task(&request.task_id)
+        .await
+        .map_err(|_| CommandError::task_not_found(&request.task_id))?;
+
+    match task.status {
+        CrawlStatus::HistoryCrawling | CrawlStatus::IncrementalCrawling => {
+            task.transition_to(CrawlStatus::Paused).map_err(|e| {
+                CommandError::new("STATE_TRANSITION_FAILED", format!("状态转换失败: {}", e))
+            })?;
+
+            state
+                .redis
+                .save_crawl_task(&task)
+                .await
+                .map_err(|e| CommandError::storage_error(&format!("保存任务失败: {}", e)))?;
+
+            Ok(CancelCrawlResponse {
+                message: "任务已取消".to_string(),
+                status: task.status.as_str().to_string(),
+            })
+        }
+        CrawlStatus::Paused => Ok(CancelCrawlResponse {
+            message: "任务已处于暂停状态".to_string(),
+            status: task.status.as_str().to_string(),
+        }),
         _ => Err(CommandError::invalid_status(
             task.status.as_str(),
             "HistoryCrawling/IncrementalCrawling",
