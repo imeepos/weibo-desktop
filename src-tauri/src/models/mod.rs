@@ -30,17 +30,13 @@ pub mod weibo_post;
 
 // 重导出常用类型,简化外部引用
 pub use cookies_data::CookiesData;
-pub use dependency::{
-    CheckMethod, CheckStatus, Dependency, DependencyCheckResult, DependencyLevel, InstallStatus,
-    InstallationTask,
-};
 pub use errors::{ApiError, StorageError, ValidationError};
 pub use login_session::{LoginSession, QrCodeStatus};
 pub use redis_config::{RedisConfig, RedisConfigError};
 
 // 003-爬取任务类型导出
 pub use crawl_checkpoint::{CrawlCheckpoint, CrawlDirection};
-pub use crawl_events::{CrawlCompletedEvent, CrawlErrorEvent, CrawlProgressEvent};
+pub use crawl_events::CrawlCompletedEvent;
 pub use crawl_task::{CrawlStatus, CrawlTask};
 pub use weibo_post::WeiboPost;
 
