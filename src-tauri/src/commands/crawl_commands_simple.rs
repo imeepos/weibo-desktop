@@ -5,7 +5,7 @@
  */
 
 use crate::models::postgres::{
-    CreateTaskRequest, ListTasksRequest, CrawlTask, TaskProgress, ListTasksResponse
+    CreateTaskRequest, ListTasksRequest, TaskProgress, ListTasksResponse
 };
 use crate::services::SimpleCrawlService;
 use crate::services::weibo_api::WeiboApiClient;
