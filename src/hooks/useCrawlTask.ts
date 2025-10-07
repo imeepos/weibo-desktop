@@ -68,7 +68,13 @@ export const useCrawlTask = () => {
     setError(null);
 
     try {
-      await invoke<void>('start_crawl', { request: { taskId } });
+      // 添加30秒超时保护
+      const startPromise = invoke<void>('start_crawl', { request: { taskId } });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('启动任务超时(30秒),请检查后端日志')), 30000);
+      });
+
+      await Promise.race([startPromise, timeoutPromise]);
     } catch (err) {
       const errorMessage = handleTauriError(err);
       setError(errorMessage);

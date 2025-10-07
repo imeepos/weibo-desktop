@@ -33,12 +33,21 @@ export const CrawlPage = () => {
   }, []);
 
   const handleTaskCreated = useCallback(async (taskId: string) => {
+    // 刷新任务列表
     setRefreshKey(prev => prev + 1);
+
+    // 选择新创建的任务
     await handleTaskSelect(taskId);
+
+    // 自动启动任务
     try {
+      console.log('自动启动任务:', taskId);
       await startTask(taskId);
+      console.log('任务启动成功:', taskId);
     } catch (err) {
-      console.error('Failed to start task:', err);
+      console.error('任务启动失败:', err);
+      // 即使启动失败,任务也已创建成功,仍然刷新列表
+      setRefreshKey(prev => prev + 1);
     }
   }, [handleTaskSelect, startTask]);
 

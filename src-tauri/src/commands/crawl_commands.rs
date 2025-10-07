@@ -427,12 +427,23 @@ pub async fn start_crawl(
     request: StartCrawlRequest,
     state: State<'_, AppState>,
 ) -> Result<StartCrawlResponse, CommandError> {
+    tracing::info!(
+        任务ID = %request.task_id,
+        "收到启动爬取命令"
+    );
+
     // 1. 加载任务
     let task = state
         .redis
         .load_task(&request.task_id)
         .await
         .map_err(|_| CommandError::task_not_found(&request.task_id))?;
+
+    tracing::debug!(
+        任务ID = %request.task_id,
+        当前状态 = %task.status.as_str(),
+        "任务已加载"
+    );
 
     // 2. 根据状态决定操作
     match task.status {
@@ -442,7 +453,19 @@ pub async fn start_crawl(
                 .crawl_service
                 .start_history_crawl(&request.task_id)
                 .await
-                .map_err(|e| CommandError::storage_error(&e))?;
+                .map_err(|e| {
+                    tracing::error!(
+                        任务ID = %request.task_id,
+                        错误 = %e,
+                        "启动历史回溯失败"
+                    );
+                    CommandError::storage_error(&e)
+                })?;
+
+            tracing::info!(
+                任务ID = %request.task_id,
+                "历史回溯启动成功,命令返回"
+            );
 
             Ok(StartCrawlResponse {
                 message: "任务已启动,开始历史回溯".to_string(),
@@ -455,7 +478,19 @@ pub async fn start_crawl(
                 .crawl_service
                 .resume_crawl(&request.task_id)
                 .await
-                .map_err(|e| CommandError::storage_error(&e))?;
+                .map_err(|e| {
+                    tracing::error!(
+                        任务ID = %request.task_id,
+                        错误 = %e,
+                        "恢复爬取失败"
+                    );
+                    CommandError::storage_error(&e)
+                })?;
+
+            tracing::info!(
+                任务ID = %request.task_id,
+                "爬取恢复成功,命令返回"
+            );
 
             Ok(StartCrawlResponse {
                 message: "任务已恢复,从检查点继续爬取".to_string(),
@@ -468,7 +503,19 @@ pub async fn start_crawl(
                 .crawl_service
                 .start_incremental_crawl(&request.task_id)
                 .await
-                .map_err(|e| CommandError::storage_error(&e))?;
+                .map_err(|e| {
+                    tracing::error!(
+                        任务ID = %request.task_id,
+                        错误 = %e,
+                        "启动增量更新失败"
+                    );
+                    CommandError::storage_error(&e)
+                })?;
+
+            tracing::info!(
+                任务ID = %request.task_id,
+                "增量更新启动成功,命令返回"
+            );
 
             Ok(StartCrawlResponse {
                 message: "任务已启动,开始增量更新".to_string(),
@@ -476,13 +523,24 @@ pub async fn start_crawl(
             })
         }
         CrawlStatus::HistoryCrawling | CrawlStatus::IncrementalCrawling => {
+            tracing::warn!(
+                任务ID = %request.task_id,
+                当前状态 = %task.status.as_str(),
+                "任务已在运行"
+            );
             // 已在运行
             Err(CommandError::already_running())
         }
-        CrawlStatus::Failed => Err(CommandError::invalid_status(
-            task.status.as_str(),
-            "Created/Paused/HistoryCompleted",
-        )),
+        CrawlStatus::Failed => {
+            tracing::warn!(
+                任务ID = %request.task_id,
+                "任务处于失败状态,无法启动"
+            );
+            Err(CommandError::invalid_status(
+                task.status.as_str(),
+                "Created/Paused/HistoryCompleted",
+            ))
+        }
     }
 }
 

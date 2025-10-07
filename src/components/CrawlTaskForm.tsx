@@ -101,6 +101,7 @@ export const CrawlTaskForm = ({ onTaskCreated }: CrawlTaskFormProps) => {
         },
       });
 
+      // 重置表单
       setFormData({
         keyword: '',
         eventStartTime: '',
@@ -108,12 +109,15 @@ export const CrawlTaskForm = ({ onTaskCreated }: CrawlTaskFormProps) => {
       });
       setValidationErrors({});
 
+      // 先重置提交状态,确保UI立即响应
+      setIsSubmitting(false);
+
+      // 然后触发回调(可能包含异步操作)
       if (onTaskCreated) {
         onTaskCreated(response.taskId);
       }
     } catch (err) {
       setError(handleTauriError(err));
-    } finally {
       setIsSubmitting(false);
     }
   };

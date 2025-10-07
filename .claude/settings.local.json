@@ -20,7 +20,10 @@
       "Bash(timeout 2 bash -c \"echo > /dev/tcp/172.28.0.10/6379\")",
       "Bash(timeout 2 bash -c \"echo > /dev/tcp/43.240.223.138/6379\")",
       "Bash(docker port desktop-redis)",
-      "Bash(pnpm list:*)"
+      "Bash(pnpm list:*)",
+      "Bash(cargo build:*)",
+      "Bash(grep:*)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []
