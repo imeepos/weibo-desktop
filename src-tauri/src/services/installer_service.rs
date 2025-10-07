@@ -17,7 +17,7 @@ use crate::models::{dependency::*, errors::*};
 use tokio::task::JoinSet;
 use tracing::{info, warn, error, debug};
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 /// 安装服务
 pub struct InstallerService {
@@ -387,7 +387,7 @@ impl InstallerService {
         Self::emit_progress_event(&app_handle, &task).await;
 
         // 解析命令和参数
-        let parts: Vec<&str> = install_command.trim().split_whitespace().collect();
+        let parts: Vec<&str> = install_command.split_whitespace().collect();
         if parts.is_empty() {
             Self::handle_installation_error(
                 &app_handle,

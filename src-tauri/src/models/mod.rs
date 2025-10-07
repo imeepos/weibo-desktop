@@ -53,7 +53,7 @@ pub fn parse_qr_status(retcode: i32) -> QrCodeStatus {
         20000000 | 50114001 => QrCodeStatus::Pending,
         50114002 => QrCodeStatus::Scanned,
         50114003 | 50114007 => QrCodeStatus::Rejected,
-        50114004 | 50114005 | 50114006 => QrCodeStatus::Expired,
+        50114004..=50114006 => QrCodeStatus::Expired,
         20000001 => QrCodeStatus::Confirmed,
         _ => QrCodeStatus::Expired,
     }

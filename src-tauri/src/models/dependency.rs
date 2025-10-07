@@ -116,6 +116,7 @@ impl Dependency {
     /// # 返回
     ///
     /// 返回一个新的Dependency实例
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         name: String,
@@ -178,10 +179,8 @@ impl Dependency {
             if self.install_command.is_none() || self.install_command.as_ref().unwrap().is_empty() {
                 return Err("自动安装依赖必须提供install_command".to_string());
             }
-        } else {
-            if self.install_guide.is_empty() {
-                return Err("手动安装依赖必须提供install_guide".to_string());
-            }
+        } else if self.install_guide.is_empty() {
+            return Err("手动安装依赖必须提供install_guide".to_string());
         }
 
         Ok(())
@@ -474,7 +473,7 @@ impl InstallationTask {
     /// 获取任务运行时长（毫秒）
     pub fn get_duration_ms(&self) -> Option<u64> {
         let start = self.started_at?;
-        let end = self.completed_at.unwrap_or_else(|| Utc::now());
+        let end = self.completed_at.unwrap_or_else(Utc::now);
         Some(end.signed_duration_since(start).num_milliseconds() as u64)
     }
 

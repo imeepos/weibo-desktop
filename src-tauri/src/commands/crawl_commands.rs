@@ -513,7 +513,7 @@ pub async fn export_crawl_data(
             .map_err(|e| CommandError::storage_error(&format!("读取帖子数据失败: {}", e)))?
     } else {
         // 读取所有帖子
-        let start = task.min_post_time.unwrap_or_else(|| task.event_start_time);
+        let start = task.min_post_time.unwrap_or(task.event_start_time);
         let end = task.max_post_time.unwrap_or_else(Utc::now);
 
         state

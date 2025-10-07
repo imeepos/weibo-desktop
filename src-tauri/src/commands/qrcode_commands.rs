@@ -4,7 +4,7 @@ use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use futures_util::StreamExt;
 
 /// 生成二维码响应

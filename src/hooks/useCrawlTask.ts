@@ -98,12 +98,14 @@ export const useCrawlTask = () => {
     setError(null);
 
     try {
-      const taskList = await invoke<CrawlTaskSummary[]>('list_crawl_tasks', {
-        status: params.status,
-        sortBy: params.sortBy,
-        sortOrder: params.sortOrder,
+      const response = await invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
+        request: {
+          status: params.status,
+          sort_by: params.sortBy,
+          sort_order: params.sortOrder,
+        },
       });
-      setTasks(taskList);
+      setTasks(response.tasks);
     } catch (err) {
       const errorMessage = handleTauriError(err);
       setError(errorMessage);

@@ -89,6 +89,7 @@ impl TimeShardService {
     /// 核心算法实现，递归终止条件：
     /// - 结果数 ≤ 1000
     /// - 时间范围 ≤ 1小时
+    #[allow(clippy::type_complexity)]
     fn split_recursive<'a>(
         &'a self,
         start: DateTime<Utc>,

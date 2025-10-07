@@ -43,13 +43,15 @@ export const CrawlTaskList = ({ onTaskSelect, refreshTrigger }: CrawlTaskListPro
       setError(null);
 
       const status = filterStatus === 'All' ? null : filterStatus;
-      const result = await invoke<CrawlTaskSummary[]>('list_crawl_tasks', {
-        status,
-        sortBy: 'updated_at',
-        sortOrder: 'desc',
+      const response = await invoke<{tasks: CrawlTaskSummary[], total: number}>('list_crawl_tasks', {
+        request: {
+          status,
+          sort_by: 'updated_at',
+          sort_order: 'desc',
+        },
       });
 
-      setTasks(result);
+      setTasks(response.tasks);
     } catch (err) {
       const errorMessage = handleTauriError(err);
       setError(errorMessage);

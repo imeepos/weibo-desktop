@@ -10,7 +10,7 @@ use crate::models::{dependency::*, errors::*};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tracing::{info, warn, error, debug};
 
 /// 依赖检测服务
@@ -416,7 +416,7 @@ impl DependencyChecker {
         for line in lines {
             let words: Vec<&str> = line.split_whitespace().collect();
             for word in words {
-                if word.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                if word.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                     if let Some(version) = word.trim_start_matches('v').split_whitespace().next() {
                         if version.contains('.') && version.split('.').count() >= 2 {
                             return Some(version.to_string());

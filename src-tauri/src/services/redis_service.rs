@@ -319,7 +319,7 @@ impl RedisService {
 
         redis::pipe()
             .atomic()
-            .hset_multiple(&task.redis_key(), &fields_refs)
+            .hset_multiple(task.redis_key(), &fields_refs)
             .ignore()
             .query_async::<()>(&mut *conn)
             .await
@@ -568,7 +568,7 @@ impl RedisService {
 
         redis::pipe()
             .atomic()
-            .hset_multiple(&checkpoint.redis_key(), &fields_refs)
+            .hset_multiple(checkpoint.redis_key(), &fields_refs)
             .ignore()
             .query_async::<()>(&mut *conn)
             .await

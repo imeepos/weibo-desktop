@@ -239,8 +239,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
                 事件类型 = "网络请求",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                消息 = $message
             );
         };
     }
@@ -370,7 +370,6 @@ pub mod macros {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tracing::{error, info, warn};
 
     #[test]
     fn test_logger_initialization() {

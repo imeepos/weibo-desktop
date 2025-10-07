@@ -65,6 +65,7 @@ impl RedisConnectionTestResult {
     }
 
     /// 创建失败结果
+    #[allow(dead_code)]
     fn failure(error: RedisTestError) -> Self {
         Self {
             success: false,
