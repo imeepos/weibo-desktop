@@ -9,7 +9,6 @@ import { Toast } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { EmptyState } from '../components/EmptyState';
-import { BUTTON } from '../constants/ui';
 
 export const CookiesListPage = () => {
   const navigate = useNavigate();

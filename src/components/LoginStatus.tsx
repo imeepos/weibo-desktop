@@ -57,17 +57,17 @@ export const LoginStatus = ({ event, isLoading }: LoginStatusProps) => {
   const getEventMessage = (): string => {
     switch (event.event_type) {
       case LoginEventType.QrCodeGenerated:
-        return event.details?.auto_refreshed ? '二维码已自动刷新' : '二维码生成成功';
+        return 'auto_refreshed' in event.details && event.details.auto_refreshed ? '二维码已自动刷新' : '二维码生成成功';
       case LoginEventType.QrCodeScanned:
         return '已扫描,等待确认';
       case LoginEventType.Confirmed:
         return '确认登录成功';
       case LoginEventType.ValidationSuccess:
-        return `登录成功! 欢迎 ${event.details?.screen_name || event.uid}`;
+        return `登录成功! 欢迎 ${'screen_name' in event.details && event.details.screen_name || event.uid}`;
       case LoginEventType.QrCodeExpired:
         return '二维码已过期,请重新生成';
       case LoginEventType.Error:
-        return `错误: ${event.details?.error || '未知错误'}`;
+        return `错误: ${'error' in event.details && event.details.error || '未知错误'}`;
       default:
         return '未知事件';
     }
