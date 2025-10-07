@@ -271,59 +271,472 @@ impl RedisService {
     // ==================== 爬取任务存储方法 (Phase 3.3 - T023) ====================
 
     /// 保存爬取任务到Redis
-    pub async fn save_crawl_task(&self, _task: &CrawlTask) -> Result<(), StorageError> {
-        todo!("Phase 3.3 - T023实现")
+    ///
+    /// Redis数据结构:
+    /// - Key: `crawl:task:{task_id}`
+    /// - Type: Hash
+    /// - TTL: 90天
+    pub async fn save_crawl_task(&self, task: &CrawlTask) -> Result<(), StorageError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let fields = vec![
+            ("id", task.id.clone()),
+            ("keyword", task.keyword.clone()),
+            (
+                "event_start_time",
+                task.event_start_time.timestamp().to_string(),
+            ),
+            ("status", task.status.as_str().to_string()),
+            (
+                "min_post_time",
+                task.min_post_time
+                    .map(|t| t.timestamp().to_string())
+                    .unwrap_or_default(),
+            ),
+            (
+                "max_post_time",
+                task.max_post_time
+                    .map(|t| t.timestamp().to_string())
+                    .unwrap_or_default(),
+            ),
+            ("crawled_count", task.crawled_count.to_string()),
+            ("created_at", task.created_at.timestamp().to_string()),
+            ("updated_at", task.updated_at.timestamp().to_string()),
+            (
+                "failure_reason",
+                task.failure_reason.clone().unwrap_or_default(),
+            ),
+        ];
+
+        let fields_refs: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (*k, v.as_str()))
+            .collect();
+
+        redis::pipe()
+            .atomic()
+            .hset_multiple(&task.redis_key(), &fields_refs)
+            .ignore()
+            .query_async::<()>(&mut *conn)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        const EXPIRE_SECONDS: i64 = 90 * 24 * 3600;
+        conn.expire::<_, ()>(&task.redis_key(), EXPIRE_SECONDS)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        tracing::info!(
+            任务ID = %task.id,
+            关键字 = %task.keyword,
+            状态 = %task.status.as_str(),
+            "爬取任务已保存到Redis"
+        );
+
+        Ok(())
     }
 
     /// 加载爬取任务
-    pub async fn load_task(&self, _task_id: &str) -> Result<CrawlTask, StorageError> {
-        todo!("Phase 3.3 - T023实现")
+    pub async fn load_task(&self, task_id: &str) -> Result<CrawlTask, StorageError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let redis_key = format!("crawl:task:{}", task_id);
+
+        let exists: bool = conn
+            .exists(&redis_key)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        if !exists {
+            tracing::warn!(任务ID = %task_id, "Redis中未找到爬取任务");
+            return Err(StorageError::NotFound(task_id.to_string()));
+        }
+
+        let data: HashMap<String, String> = conn
+            .hgetall(&redis_key)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        let status_str = data
+            .get("status")
+            .ok_or_else(|| StorageError::SerializationError("Missing status field".into()))?;
+
+        let status = serde_json::from_str(&format!("\"{}\"", status_str))
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+        let event_start_time = data
+            .get("event_start_time")
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+            .ok_or_else(|| StorageError::SerializationError("Invalid event_start_time".into()))?;
+
+        let min_post_time = data
+            .get("min_post_time")
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+
+        let max_post_time = data
+            .get("max_post_time")
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+
+        let created_at = data
+            .get("created_at")
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+            .ok_or_else(|| StorageError::SerializationError("Invalid created_at".into()))?;
+
+        let updated_at = data
+            .get("updated_at")
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+            .ok_or_else(|| StorageError::SerializationError("Invalid updated_at".into()))?;
+
+        let failure_reason = data
+            .get("failure_reason")
+            .filter(|s| !s.is_empty())
+            .cloned();
+
+        let task = CrawlTask {
+            id: data
+                .get("id")
+                .ok_or_else(|| StorageError::SerializationError("Missing id field".into()))?
+                .clone(),
+            keyword: data
+                .get("keyword")
+                .ok_or_else(|| StorageError::SerializationError("Missing keyword field".into()))?
+                .clone(),
+            event_start_time,
+            status,
+            min_post_time,
+            max_post_time,
+            crawled_count: data
+                .get("crawled_count")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
+            created_at,
+            updated_at,
+            failure_reason,
+        };
+
+        tracing::debug!(任务ID = %task_id, "从Redis加载爬取任务");
+        Ok(task)
     }
 
     /// 列出所有任务
     pub async fn list_all_tasks(&self) -> Result<Vec<CrawlTask>, StorageError> {
-        todo!("Phase 3.3 - T023实现")
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let pattern = "crawl:task:*";
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg(pattern)
+            .query_async(&mut *conn)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        let mut tasks = Vec::new();
+        for key in keys {
+            if let Some(task_id) = key.strip_prefix("crawl:task:") {
+                if let Ok(task) = self.load_task(task_id).await {
+                    tasks.push(task);
+                }
+            }
+        }
+
+        tracing::debug!(任务数量 = %tasks.len(), "从Redis列出所有爬取任务");
+        Ok(tasks)
     }
 
     /// 保存检查点
-    pub async fn save_checkpoint(&self, _checkpoint: &CrawlCheckpoint) -> Result<(), StorageError> {
-        todo!("Phase 3.3 - T023实现")
+    ///
+    /// Redis数据结构:
+    /// - Key: `crawl:checkpoint:{task_id}`
+    /// - Type: Hash
+    /// - TTL: 与任务同生命周期(90天)
+    pub async fn save_checkpoint(&self, checkpoint: &CrawlCheckpoint) -> Result<(), StorageError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let completed_shards_json = serde_json::to_string(&checkpoint.completed_shards)
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+        let direction_str = serde_json::to_string(&checkpoint.direction)
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+        let fields = vec![
+            ("task_id", checkpoint.task_id.clone()),
+            (
+                "shard_start_time",
+                checkpoint.shard_start_time.timestamp().to_string(),
+            ),
+            (
+                "shard_end_time",
+                checkpoint.shard_end_time.timestamp().to_string(),
+            ),
+            ("current_page", checkpoint.current_page.to_string()),
+            ("direction", direction_str),
+            ("completed_shards", completed_shards_json),
+            ("saved_at", checkpoint.saved_at.timestamp().to_string()),
+        ];
+
+        let fields_refs: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (*k, v.as_str()))
+            .collect();
+
+        redis::pipe()
+            .atomic()
+            .hset_multiple(&checkpoint.redis_key(), &fields_refs)
+            .ignore()
+            .query_async::<()>(&mut *conn)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        const EXPIRE_SECONDS: i64 = 90 * 24 * 3600;
+        conn.expire::<_, ()>(&checkpoint.redis_key(), EXPIRE_SECONDS)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        tracing::debug!(
+            任务ID = %checkpoint.task_id,
+            当前页码 = %checkpoint.current_page,
+            "检查点已保存到Redis"
+        );
+
+        Ok(())
     }
 
     /// 加载检查点
     pub async fn load_checkpoint(
         &self,
-        _task_id: &str,
+        task_id: &str,
     ) -> Result<Option<CrawlCheckpoint>, StorageError> {
-        todo!("Phase 3.3 - T023实现")
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let redis_key = format!("crawl:checkpoint:{}", task_id);
+
+        let exists: bool = conn
+            .exists(&redis_key)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        if !exists {
+            tracing::debug!(任务ID = %task_id, "Redis中未找到检查点");
+            return Ok(None);
+        }
+
+        let data: HashMap<String, String> = conn
+            .hgetall(&redis_key)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        let shard_start_time = data
+            .get("shard_start_time")
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+            .ok_or_else(|| StorageError::SerializationError("Invalid shard_start_time".into()))?;
+
+        let shard_end_time = data
+            .get("shard_end_time")
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+            .ok_or_else(|| StorageError::SerializationError("Invalid shard_end_time".into()))?;
+
+        let saved_at = data
+            .get("saved_at")
+            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
+            .ok_or_else(|| StorageError::SerializationError("Invalid saved_at".into()))?;
+
+        let direction = data
+            .get("direction")
+            .ok_or_else(|| StorageError::SerializationError("Missing direction field".into()))
+            .and_then(|s| {
+                serde_json::from_str(s)
+                    .map_err(|e| StorageError::SerializationError(e.to_string()))
+            })?;
+
+        let completed_shards = data
+            .get("completed_shards")
+            .ok_or_else(|| {
+                StorageError::SerializationError("Missing completed_shards field".into())
+            })
+            .and_then(|s| {
+                serde_json::from_str(s)
+                    .map_err(|e| StorageError::SerializationError(e.to_string()))
+            })?;
+
+        let checkpoint = CrawlCheckpoint {
+            task_id: data
+                .get("task_id")
+                .ok_or_else(|| StorageError::SerializationError("Missing task_id field".into()))?
+                .clone(),
+            shard_start_time,
+            shard_end_time,
+            current_page: data
+                .get("current_page")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1),
+            direction,
+            completed_shards,
+            saved_at,
+        };
+
+        tracing::debug!(任务ID = %task_id, "从Redis加载检查点");
+        Ok(Some(checkpoint))
     }
 
     /// 批量保存帖子
+    ///
+    /// Redis数据结构:
+    /// 1. 帖子内容 - Sorted Set: `crawl:posts:{task_id}`
+    ///    - Score: 帖子发布时间戳
+    ///    - Member: 序列化的WeiboPost JSON
+    /// 2. 去重索引 - Set: `crawl:post_ids:{task_id}`
+    ///    - Members: 所有帖子ID
     pub async fn save_posts(
         &self,
-        _task_id: &str,
-        _posts: &[WeiboPost],
+        task_id: &str,
+        posts: &[WeiboPost],
     ) -> Result<(), StorageError> {
-        todo!("Phase 3.3 - T023实现")
+        if posts.is_empty() {
+            return Ok(());
+        }
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let posts_key = format!("crawl:posts:{}", task_id);
+        let ids_key = format!("crawl:post_ids:{}", task_id);
+
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+
+        for post in posts {
+            let json = post
+                .to_json()
+                .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+
+            let score = post.created_at.timestamp();
+
+            pipe.zadd(&posts_key, json, score).ignore();
+            pipe.sadd(&ids_key, &post.id).ignore();
+        }
+
+        pipe.query_async::<()>(&mut *conn)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        const EXPIRE_SECONDS: i64 = 90 * 24 * 3600;
+        conn.expire::<_, ()>(&posts_key, EXPIRE_SECONDS)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+        conn.expire::<_, ()>(&ids_key, EXPIRE_SECONDS)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        tracing::info!(
+            任务ID = %task_id,
+            帖子数量 = %posts.len(),
+            "批量保存帖子到Redis"
+        );
+
+        Ok(())
     }
 
     /// 按时间范围查询帖子
+    ///
+    /// 使用ZRANGEBYSCORE命令按时间戳范围查询
     pub async fn get_posts_by_time_range(
         &self,
-        _task_id: &str,
-        _start: chrono::DateTime<chrono::Utc>,
-        _end: chrono::DateTime<chrono::Utc>,
+        task_id: &str,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<WeiboPost>, StorageError> {
-        todo!("Phase 3.3 - T023实现")
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let posts_key = format!("crawl:posts:{}", task_id);
+
+        let start_score = start.timestamp();
+        let end_score = end.timestamp();
+
+        let json_strings: Vec<String> = redis::cmd("ZRANGEBYSCORE")
+            .arg(&posts_key)
+            .arg(start_score)
+            .arg(end_score)
+            .query_async(&mut *conn)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        let mut posts = Vec::new();
+        for json in json_strings {
+            match WeiboPost::from_json(&json) {
+                Ok(post) => posts.push(post),
+                Err(e) => {
+                    tracing::warn!(错误 = %e, "反序列化帖子JSON失败");
+                }
+            }
+        }
+
+        tracing::debug!(
+            任务ID = %task_id,
+            查询到帖子数量 = %posts.len(),
+            "按时间范围查询帖子"
+        );
+
+        Ok(posts)
     }
 
     /// 检查帖子是否已存在
+    ///
+    /// 使用SISMEMBER命令检查去重索引
     pub async fn check_post_exists(
         &self,
-        _task_id: &str,
-        _post_id: &str,
+        task_id: &str,
+        post_id: &str,
     ) -> Result<bool, StorageError> {
-        todo!("Phase 3.3 - T023实现")
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))?;
+
+        let ids_key = format!("crawl:post_ids:{}", task_id);
+
+        let exists: bool = conn
+            .sismember(&ids_key, post_id)
+            .await
+            .map_err(|e| StorageError::CommandFailed(e.to_string()))?;
+
+        Ok(exists)
     }
 
     /// 获取Redis连接 (测试辅助方法)
