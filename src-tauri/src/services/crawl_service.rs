@@ -138,34 +138,65 @@ impl CrawlService {
         self.register_active_task(task_id, cancel_token.clone())
             .await;
 
-        // 6. 准备时间范围
-        let now = Utc::now();
-        let event_start = task.event_start_time;
-
-        // 使用floor_to_hour和ceil_to_hour对齐时间边界
-        let end_time = ceil_to_hour(now);
-        let start_time = floor_to_hour(event_start);
-
-        // 7. 拆分时间范围
-        let time_shards = self
-            .time_shard_service
-            .split_time_range_if_needed(start_time, end_time, &task.keyword)
-            .await
-            .map_err(|e| format!("时间分片失败: {}", e))?;
-
         tracing::info!(
             任务ID = %task_id,
-            时间分片数量 = %time_shards.len(),
-            开始时间 = %start_time,
-            结束时间 = %end_time,
-            "启动历史回溯"
+            关键字 = %task.keyword,
+            事件开始时间 = %task.event_start_time,
+            "开始准备历史回溯,将在后台执行时间分片"
         );
 
-        // 8. 在后台任务中执行爬取
+        // 6. 立即返回,将耗时操作移到后台任务
         let service_clone = self.clone_for_background();
         let task_id_owned = task_id.to_string();
+        let event_start = task.event_start_time;
+        let keyword = task.keyword.clone();
 
         tokio::spawn(async move {
+            tracing::info!(
+                任务ID = %task_id_owned,
+                "后台任务开始: 准备时间范围和分片"
+            );
+
+            // 准备时间范围
+            let now = Utc::now();
+            let end_time = ceil_to_hour(now);
+            let start_time = floor_to_hour(event_start);
+
+            tracing::debug!(
+                任务ID = %task_id_owned,
+                开始时间 = %start_time,
+                结束时间 = %end_time,
+                时间跨度小时数 = %(end_time - start_time).num_hours(),
+                "调用时间分片服务"
+            );
+
+            // 拆分时间范围
+            let time_shards = match service_clone
+                .time_shard_service
+                .split_time_range_if_needed(start_time, end_time, &keyword)
+                .await
+            {
+                Ok(shards) => {
+                    tracing::info!(
+                        任务ID = %task_id_owned,
+                        时间分片数量 = %shards.len(),
+                        "时间分片完成"
+                    );
+                    shards
+                }
+                Err(e) => {
+                    let error_msg = format!("时间分片失败: {}", e);
+                    tracing::error!(
+                        任务ID = %task_id_owned,
+                        错误 = %e,
+                        "时间分片失败"
+                    );
+                    service_clone.handle_crawl_error(&task_id_owned, error_msg).await;
+                    return;
+                }
+            };
+
+            // 执行爬取
             if let Err(e) = service_clone
                 .execute_backward_crawl(&task_id_owned, time_shards, cancel_token)
                 .await
@@ -174,6 +205,11 @@ impl CrawlService {
                 service_clone.handle_crawl_error(&task_id_owned, e).await;
             }
         });
+
+        tracing::info!(
+            任务ID = %task_id,
+            "历史回溯命令返回,后台任务已启动"
+        );
 
         Ok(())
     }

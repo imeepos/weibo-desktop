@@ -80,8 +80,35 @@ impl TimeShardService {
         let start_aligned = floor_to_hour(start);
         let end_aligned = ceil_to_hour(end);
 
-        self.split_recursive(start_aligned, end_aligned, keyword)
-            .await
+        tracing::info!(
+            关键字 = %keyword,
+            开始时间 = %start_aligned,
+            结束时间 = %end_aligned,
+            时间跨度小时数 = %(end_aligned - start_aligned).num_hours(),
+            "开始时间分片计算"
+        );
+
+        let result = self.split_recursive(start_aligned, end_aligned, keyword, 0)
+            .await;
+
+        match &result {
+            Ok(shards) => {
+                tracing::info!(
+                    关键字 = %keyword,
+                    分片数量 = %shards.len(),
+                    "时间分片计算完成"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    关键字 = %keyword,
+                    错误 = %e,
+                    "时间分片计算失败"
+                );
+            }
+        }
+
+        result
     }
 
     /// 递归拆分时间范围
@@ -89,18 +116,33 @@ impl TimeShardService {
     /// 核心算法实现，递归终止条件：
     /// - 结果数 ≤ 1000
     /// - 时间范围 ≤ 1小时
+    /// - 递归深度 ≥ 100 (防止栈溢出)
     #[allow(clippy::type_complexity)]
     fn split_recursive<'a>(
         &'a self,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
         keyword: &'a str,
+        depth: usize,
     ) -> Pin<
         Box<dyn Future<Output = Result<Vec<(DateTime<Utc>, DateTime<Utc>)>, String>> + Send + 'a>,
     > {
         Box::pin(async move {
             const MAX_RESULTS: usize = 1000;
             const MIN_SHARD_HOURS: i64 = 1;
+            const MAX_RECURSION_DEPTH: usize = 100;
+
+            // 检查递归深度
+            if depth >= MAX_RECURSION_DEPTH {
+                tracing::warn!(
+                    keyword,
+                    start = %start,
+                    end = %end,
+                    depth,
+                    "达到最大递归深度,强制返回当前分片"
+                );
+                return Ok(vec![(start, end)]);
+            }
 
             // 估算结果数
             let total_results = self.estimate_total_results(start, end, keyword).await?;
@@ -112,6 +154,7 @@ impl TimeShardService {
                     start = %start,
                     end = %end,
                     total_results,
+                    depth,
                     "时间范围无需分片"
                 );
                 return Ok(vec![(start, end)]);
@@ -125,6 +168,7 @@ impl TimeShardService {
                     start = %start,
                     end = %end,
                     total_results,
+                    depth,
                     "时间范围仅{}小时但结果数超过限制，将跳过部分数据",
                     duration_hours
                 );
@@ -141,11 +185,12 @@ impl TimeShardService {
                 end = %end,
                 mid = %mid_aligned,
                 total_results,
+                depth,
                 "二分时间范围"
             );
 
-            let left_shards = self.split_recursive(start, mid_aligned, keyword).await?;
-            let right_shards = self.split_recursive(mid_aligned, end, keyword).await?;
+            let left_shards = self.split_recursive(start, mid_aligned, keyword, depth + 1).await?;
+            let right_shards = self.split_recursive(mid_aligned, end, keyword, depth + 1).await?;
 
             Ok([left_shards, right_shards].concat())
         })
