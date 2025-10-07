@@ -112,6 +112,6 @@ path = "../tests/contract/test_get_crawl_progress.rs"
 
 # 集成测试
 [[test]]
-name = "integration"
-path = "../tests/integration/mod.rs"
+name = "integration_scenario_2"
+path = "tests/integration/test_scenario_2_start_crawl.rs"
 harness = true
