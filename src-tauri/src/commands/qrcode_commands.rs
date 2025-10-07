@@ -119,38 +119,40 @@ async fn monitor_login(
             break;
         }
 
-        let stream = ws_stream.filter_map(|msg_result| async move {
-        match msg_result {
-            Ok(Message::Text(text)) => {
-                match serde_json::from_str::<WsEvent>(&text) {
-                    Ok(WsEvent::QrcodeGenerated { .. }) => None,
-                    Ok(WsEvent::Pong { .. }) => None, // 跳过健康检查响应
-                    Ok(WsEvent::StatusUpdate { retcode, msg, data, .. }) => {
-                        Some(Ok((parse_qr_status(retcode), None, None, None, Some(retcode), Some(msg), data)))
-                    }
-                    Ok(WsEvent::LoginConfirmed { cookies, uid, screen_name, .. }) => {
-                        Some(Ok((QrCodeStatus::Confirmed, Some(uid), Some(cookies), Some(screen_name), None, None, None)))
-                    }
-                    Ok(WsEvent::Error { error_type, message, .. }) => {
-                        Some(Err(ApiError::QrCodeGenerationFailed(format!("{}: {}", error_type, message))))
-                    }
-                    Err(e) => Some(Err(ApiError::JsonParseFailed(e.to_string())))
-                }
-            }
-            Ok(Message::Close(_)) => None,
-            Err(e) => Some(Err(ApiError::NetworkFailed(format!("WebSocket error: {}", e)))),
-            _ => None,
-        }
-    });
-
-        tokio::pin!(stream);
-
         tracing::debug!(二维码ID = %qr_id, "WebSocket消息流已就绪,开始等待消息");
 
-        while let Some(result) = stream.next().await {
-            tracing::debug!(二维码ID = %qr_id, "收到WebSocket消息: {:?}", result);
+        while let Some(msg_result) = ws_stream.next().await {
+            // 解析WebSocket消息
+            let parsed_result = match msg_result {
+                Ok(Message::Text(text)) => {
+                    tracing::debug!(二维码ID = %qr_id, "收到WebSocket文本消息");
+                    match serde_json::from_str::<WsEvent>(&text) {
+                        Ok(WsEvent::QrcodeGenerated { .. }) => continue,
+                        Ok(WsEvent::Pong { .. }) => continue,
+                        Ok(WsEvent::StatusUpdate { retcode, msg, data, .. }) => {
+                            Ok((parse_qr_status(retcode), None, None, None, Some(retcode), Some(msg), data))
+                        }
+                        Ok(WsEvent::LoginConfirmed { cookies, uid, screen_name, .. }) => {
+                            Ok((QrCodeStatus::Confirmed, Some(uid), Some(cookies), Some(screen_name), None, None, None))
+                        }
+                        Ok(WsEvent::Error { error_type, message, .. }) => {
+                            Err(ApiError::QrCodeGenerationFailed(format!("{}: {}", error_type, message)))
+                        }
+                        Err(e) => Err(ApiError::JsonParseFailed(e.to_string()))
+                    }
+                }
+                Ok(Message::Close(_)) => {
+                    tracing::debug!(二维码ID = %qr_id, "收到WebSocket关闭消息");
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!(二维码ID = %qr_id, 错误 = ?e, "WebSocket消息接收错误");
+                    Err(ApiError::NetworkFailed(format!("WebSocket error: {}", e)))
+                }
+                _ => continue,
+            };
 
-            match result {
+            match parsed_result {
                 Ok((status, uid_opt, cookies_opt, screen_name_opt, retcode, msg, data)) => {
                     tracing::info!(二维码ID = %qr_id, 状态 = ?status, retcode = ?retcode, msg = ?msg, "状态更新");
 
@@ -290,7 +292,7 @@ async fn reconnect_websocket() -> Result<crate::services::weibo_api::WsStream, A
 fn emit_connection_lost(app: &AppHandle, qr_id: &str, reason: &str) {
     use serde::{Serialize};
 
-    #[derive(Serialize)]
+    #[derive(Serialize, Clone)]
     struct ConnectionEvent {
         qr_id: String,
         reason: String,
@@ -310,7 +312,7 @@ fn emit_connection_lost(app: &AppHandle, qr_id: &str, reason: &str) {
 fn emit_connection_restored(app: &AppHandle, qr_id: &str) {
     use serde::{Serialize};
 
-    #[derive(Serialize)]
+    #[derive(Serialize, Clone)]
     struct ConnectionEvent {
         qr_id: String,
         timestamp: String,

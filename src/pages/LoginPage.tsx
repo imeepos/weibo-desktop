@@ -172,6 +172,8 @@ export const LoginPage = () => {
   useEffect(() => {
     let unlistenStatus: UnlistenFn | undefined;
     let unlistenError: UnlistenFn | undefined;
+    let unlistenConnectionLost: UnlistenFn | undefined;
+    let unlistenConnectionRestored: UnlistenFn | undefined;
     let isMounted = true;
 
     const handleStatusUpdate = (event: { payload: LoginStatusEvent }) => {
@@ -212,18 +214,41 @@ export const LoginPage = () => {
       setError(event.payload.message);
     };
 
+    const handleConnectionLost = (event: { payload: { qr_id: string; reason: string; timestamp: string } }) => {
+      if (!isMounted) return;
+      console.warn('WebSocket连接断开:', event.payload);
+
+      if (event.payload.reason === 'reconnecting') {
+        setError('连接断开，正在自动重连...');
+      } else if (event.payload.reason === 'max_retries_exceeded') {
+        setError('连接断开，重连失败。请刷新二维码重试。');
+      }
+    };
+
+    const handleConnectionRestored = (event: { payload: { qr_id: string; timestamp: string } }) => {
+      if (!isMounted) return;
+      console.log('WebSocket连接已恢复:', event.payload);
+      setError(null);
+    };
+
     const setupListeners = async () => {
-      const [statusUnlisten, errorUnlisten] = await Promise.all([
+      const [statusUnlisten, errorUnlisten, connLostUnlisten, connRestoredUnlisten] = await Promise.all([
         listen<LoginStatusEvent>('login_status_update', handleStatusUpdate),
-        listen<LoginErrorEvent>('login_error', handleError)
+        listen<LoginErrorEvent>('login_error', handleError),
+        listen('websocket_connection_lost', handleConnectionLost),
+        listen('websocket_connection_restored', handleConnectionRestored),
       ]);
 
       if (isMounted) {
         unlistenStatus = statusUnlisten;
         unlistenError = errorUnlisten;
+        unlistenConnectionLost = connLostUnlisten;
+        unlistenConnectionRestored = connRestoredUnlisten;
       } else {
         statusUnlisten();
         errorUnlisten();
+        connLostUnlisten();
+        connRestoredUnlisten();
       }
     };
 
@@ -233,6 +258,8 @@ export const LoginPage = () => {
       isMounted = false;
       unlistenStatus?.();
       unlistenError?.();
+      unlistenConnectionLost?.();
+      unlistenConnectionRestored?.();
     };
   }, [navigate]);
 
