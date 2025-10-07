@@ -110,11 +110,11 @@ pub fn init() -> Result<(), io::Error> {
 /// 如果guard被drop,日志写入器将被关闭。
 pub fn init_logging() -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
     use tracing_appender::rolling;
-    use tauri::api::path::config_dir;
 
     // 1. 获取应用数据目录
+    // Tauri 2.x: 使用 std::env 或 dirs crate 替代 tauri::api::path
     // 优先使用系统配置目录,回退到当前目录
-    let app_data_dir = config_dir()
+    let app_data_dir = dirs::config_dir()
         .map(|p| p.join("微博登录助手"))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
@@ -393,10 +393,9 @@ mod tests {
 
     #[test]
     fn test_dependency_logging_initialization() {
-        use tauri::api::path::config_dir;
-
         // 打印日志目录位置
-        let app_data_dir = config_dir()
+        // Tauri 2.x: 使用 dirs crate 替代 tauri::api::path
+        let app_data_dir = dirs::config_dir()
             .map(|p| p.join("微博登录助手"))
             .unwrap_or_else(|| std::path::PathBuf::from("."));
         let log_dir = app_data_dir.join("logs");

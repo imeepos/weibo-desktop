@@ -16,11 +16,13 @@ opt-level = "z"      # 优化大小
 strip = true         # 移除调试符号
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Tauri核心: 桌面应用框架
-tauri = { version = "1.5", features = ["shell-open"] }
+tauri = { version = "2", features = [] }
+# Tauri Shell插件: 提供打开URL等shell操作能力 (Tauri 2.x中shell功能已从核心移至插件)
+tauri-plugin-shell = "2"
 
 # 序列化: 数据结构与JSON互转
 serde = { version = "1.0", features = ["derive"] }
@@ -74,6 +76,9 @@ semver = "1.0"
 
 # 正则表达式: 版本号解析
 regex = "1.10"
+
+# 系统目录路径: 获取配置目录等系统路径 (Tauri 2.x中替代 tauri::api::path)
+dirs = "5.0"
 
 # 库配置: 支持集成测试
 [lib]
