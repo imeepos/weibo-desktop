@@ -173,8 +173,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
                 事件类型 = "二维码操作",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -195,8 +195,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
                 事件类型 = "登录流程",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -217,8 +217,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
                 事件类型 = "数据存储",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -261,8 +261,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
                 事件类型 = "数据验证",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -283,8 +283,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::info!(
                 事件类型 = "系统事件",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -305,8 +305,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::error!(
                 错误类型 = "业务错误",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -327,8 +327,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::warn!(
                 警告类型 = "业务警告",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }
@@ -349,8 +349,8 @@ pub mod macros {
         ($message:expr, $($field:tt = $value:expr),* $(,)?) => {
             tracing::debug!(
                 调试类型 = "状态跟踪",
-                $($field = $value),*
-                $message
+                $($field = $value),*,
+                message = $message
             );
         };
     }

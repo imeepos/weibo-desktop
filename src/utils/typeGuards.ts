@@ -4,7 +4,8 @@
  * 提供类型守卫函数，确保运行时数据的类型安全
  */
 
-import type { CommandError, ErrorCode, CrawlErrorCode, LoginErrorCode } from '../types/error';
+import type { CommandError, ErrorCode } from '../types/error';
+import { CrawlErrorCode, LoginErrorCode } from '../types/error';
 import type { CrawlProgressEvent, CrawlCompletedEvent, CrawlErrorEvent } from '../types/crawl';
 
 /**
@@ -12,7 +13,7 @@ import type { CrawlProgressEvent, CrawlCompletedEvent, CrawlErrorEvent } from '.
  */
 export function isCommandError(obj: unknown): obj is CommandError {
   return (
-    obj &&
+    obj != null &&
     typeof obj === 'object' &&
     'code' in obj &&
     'error' in obj &&
@@ -43,7 +44,7 @@ export function isValidErrorCode(code: string): code is ErrorCode {
  */
 export function isCrawlProgressEvent(obj: unknown): obj is CrawlProgressEvent {
   return (
-    obj &&
+    obj != null &&
     typeof obj === 'object' &&
     'taskId' in obj &&
     'status' in obj &&
@@ -65,7 +66,7 @@ export function isCrawlProgressEvent(obj: unknown): obj is CrawlProgressEvent {
  */
 export function isCrawlCompletedEvent(obj: unknown): obj is CrawlCompletedEvent {
   return (
-    obj &&
+    obj != null &&
     typeof obj === 'object' &&
     'taskId' in obj &&
     'finalStatus' in obj &&
@@ -85,7 +86,7 @@ export function isCrawlCompletedEvent(obj: unknown): obj is CrawlCompletedEvent 
  */
 export function isCrawlErrorEvent(obj: unknown): obj is CrawlErrorEvent {
   return (
-    obj &&
+    obj != null &&
     typeof obj === 'object' &&
     'taskId' in obj &&
     'error' in obj &&
@@ -104,7 +105,7 @@ export function isCrawlErrorEvent(obj: unknown): obj is CrawlErrorEvent {
  */
 export function isTimeRange(obj: unknown): obj is { start: string; end: string } {
   return (
-    obj &&
+    obj != null &&
     typeof obj === 'object' &&
     'start' in obj &&
     'end' in obj &&

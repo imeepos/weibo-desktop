@@ -27,7 +27,6 @@ export const ErrorDisplay = ({
 
   const errorCode = extractErrorCode(error);
   const isRetryableError = errorCode && [
-    CrawlErrorCode.NETWORK_ERROR,
     CrawlErrorCode.STORAGE_ERROR,
     CrawlErrorCode.FILE_SYSTEM_ERROR,
   ].includes(errorCode as CrawlErrorCode);

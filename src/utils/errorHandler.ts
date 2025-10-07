@@ -1,4 +1,4 @@
-import { CommandError, ErrorCode, CrawlErrorCode, LoginErrorCode } from '../types/error';
+import { ErrorCode, CrawlErrorCode, LoginErrorCode } from '../types/error';
 import { isCommandError, parseCommandError } from './typeGuards';
 
 interface TauriError {
@@ -61,7 +61,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
  */
 function isTauriError(error: unknown): error is TauriError {
   return (
-    error &&
+    error != null &&
     typeof error === 'object' &&
     ('message' in error || 'payload' in error)
   );

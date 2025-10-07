@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { XCircle, CheckCircle, Loader2, Download, FolderOpen } from 'lucide-react';
+import { CheckCircle, Loader2, Download, FolderOpen } from 'lucide-react';
 import { handleTauriError } from '../utils/errorHandler';
 import ErrorDisplay from './ErrorDisplay';
 import { BUTTON } from '../constants/ui';
