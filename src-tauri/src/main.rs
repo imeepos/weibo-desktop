@@ -6,6 +6,7 @@ mod models;
 mod services;
 mod state;
 mod utils;
+mod database;
 
 use services::ConfigService;
 use state::AppState;
@@ -50,33 +51,38 @@ fn main() {
     tauri::Builder::default()
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            // 001-Cookies功能
             commands::qrcode_commands::generate_qrcode,
             commands::cookies_commands::save_cookies,
             commands::cookies_commands::query_cookies,
             commands::cookies_commands::delete_cookies,
             commands::cookies_commands::list_all_uids,
+            // 依赖管理
             commands::dependency_commands::check_dependencies,
             commands::dependency_commands::install_dependency,
             commands::dependency_commands::query_dependency_status,
             commands::dependency_commands::trigger_manual_check,
+            // 日志
             commands::log_commands::log_frontend_event,
             commands::log_commands::log_frontend_batch,
+            // Playwright服务
             commands::playwright_commands::start_playwright_server,
             commands::playwright_commands::stop_playwright_server,
             commands::playwright_commands::check_playwright_server,
             commands::playwright_commands::get_playwright_logs,
+            // Redis配置（用于Cookies存储）
             commands::redis_commands::test_redis_connection,
             commands::redis_commands::save_redis_config,
             commands::redis_commands::load_redis_config,
-            commands::crawl_commands::create_crawl_task,
-            commands::crawl_commands::start_crawl,
-            commands::crawl_commands::pause_crawl,
-            commands::crawl_commands::cancel_crawl,
-            commands::crawl_commands::get_crawl_task,
-            commands::crawl_commands::get_crawl_checkpoint,
-            commands::crawl_commands::get_crawl_progress,
-            commands::crawl_commands::export_crawl_data,
-            commands::crawl_commands::list_crawl_tasks,
+            // 003-爬取功能（PostgreSQL简化版本）
+            commands::crawl_commands_simple::init_simple_crawl_system,
+            commands::crawl_commands_simple::create_simple_crawl_task,
+            commands::crawl_commands_simple::list_simple_crawl_tasks,
+            commands::crawl_commands_simple::get_simple_crawl_progress,
+            commands::crawl_commands_simple::start_simple_crawl,
+            commands::crawl_commands_simple::pause_simple_crawl,
+            commands::crawl_commands_simple::delete_simple_crawl_task,
+            // 系统工具
             commands::system_commands::open_file_location,
         ])
         .setup(move |_app| {

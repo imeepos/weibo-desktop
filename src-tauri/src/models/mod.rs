@@ -22,23 +22,14 @@ pub mod frontend_log;
 pub mod login_session;
 pub mod redis_config;
 
-// 003-爬取任务模型
-pub mod crawl_checkpoint;
-pub mod crawl_events;
-pub mod crawl_task;
-pub mod weibo_post;
+// PostgreSQL简化架构模型（003-爬取任务）
+pub mod postgres;
 
 // 重导出常用类型,简化外部引用
 pub use cookies_data::CookiesData;
 pub use errors::{ApiError, StorageError, ValidationError};
 pub use login_session::{LoginSession, QrCodeStatus};
 pub use redis_config::{RedisConfig, RedisConfigError};
-
-// 003-爬取任务类型导出
-pub use crawl_checkpoint::{CrawlCheckpoint, CrawlDirection};
-pub use crawl_events::CrawlCompletedEvent;
-pub use crawl_task::{CrawlStatus, CrawlTask};
-pub use weibo_post::WeiboPost;
 
 /// 解析微博API返回码为二维码状态
 ///

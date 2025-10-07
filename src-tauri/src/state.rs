@@ -1,19 +1,19 @@
 use crate::services::{
-    CrawlService, RedisService, SessionManager, TimeShardService, ValidationService,
-    WeiboApiClient,
+    RedisService, SessionManager, ValidationService, WeiboApiClient,
 };
 use std::sync::Arc;
 
 /// 应用全局状态
 ///
 /// 存在即合理: 每个字段代表应用核心能力的单一来源
-/// - redis: 数据持久化
+/// - redis: Cookies数据持久化 (001功能)
 /// - weibo_api: 微博平台交互 (Playwright自动化)
 /// - validator: Cookies可信度保障
 /// - session_manager: 二维码会话生命周期管理
-/// - crawl_service: 微博爬取任务协调器 (003功能)
+///
+/// 注意: 003爬取功能现在使用PostgreSQL,不再依赖全局状态
 pub struct AppState {
-    /// Redis服务: 唯一的数据存储入口
+    /// Redis服务: Cookies存储 (001功能)
     pub redis: Arc<RedisService>,
 
     /// 微博API客户端: 唯一的微博平台通信渠道 (Playwright实现)
@@ -24,16 +24,13 @@ pub struct AppState {
 
     /// 会话管理器: 防止资源泄露的看守者
     pub session_manager: Arc<SessionManager>,
-
-    /// 爬取服务: 微博爬取任务协调器 (003功能)
-    pub crawl_service: Arc<CrawlService>,
 }
 
 impl AppState {
     /// 初始化应用状态
     ///
     /// 三个参数,三个核心能力,缺一不可:
-    /// - redis_url: 数据根基
+    /// - redis_url: Cookies存储根基 (001功能)
     /// - playwright_server_url: Playwright WebSocket server地址
     /// - playwright_validation_script: 验证工具
     ///
@@ -51,18 +48,11 @@ impl AppState {
         ));
         let session_manager = Arc::new(SessionManager::new());
 
-        // 初始化003功能的服务
-        let time_shard_service = Arc::new(TimeShardService::new());
-        let crawl_service = Arc::new(CrawlService::new(
-            Arc::clone(&redis),
-            time_shard_service,
-        ));
-
         tracing::info!(
             redis_url = %redis_url,
             playwright_server = %playwright_server_url,
             playwright_validation = %playwright_validation_script,
-            "AppState initialized with session manager and crawl service"
+            "AppState initialized (Cookies storage uses Redis, Crawl tasks use PostgreSQL)"
         );
 
         Ok(Self {
@@ -70,7 +60,6 @@ impl AppState {
             weibo_api,
             validator,
             session_manager,
-            crawl_service,
         })
     }
 }

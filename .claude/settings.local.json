@@ -23,7 +23,10 @@
       "Bash(pnpm list:*)",
       "Bash(cargo build:*)",
       "Bash(grep:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(docker logs:*)",
+      "Bash(timeout 5 bash -c \"echo > /dev/tcp/43.240.223.138/6379\")",
+      "Bash(pnpm tauri dev:*)"
     ],
     "deny": [],
     "ask": []

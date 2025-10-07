@@ -386,4 +386,16 @@ impl WeiboApiClient {
 
         unreachable!()
     }
+
+    /// 获取Cookies
+    pub async fn get_cookies(&self) -> Result<HashMap<String, String>, ApiError> {
+        // 暂时返回空的cookies map，后续可以从Redis或数据库中获取
+        Ok(HashMap::new())
+    }
+
+    /// 爬取帖子
+    pub async fn crawl_posts(&self, _request: &crate::services::crawl_service_simple::SimpleCrawlRequest) -> Result<Vec<crate::services::crawl_service_simple::WeiboPostRaw>, ApiError> {
+        // 暂时返回空结果，后续会调用Playwright服务器进行实际爬取
+        Ok(vec![])
+    }
 }
