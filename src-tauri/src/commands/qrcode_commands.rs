@@ -64,7 +64,6 @@ pub async fn generate_qrcode(
 
     // 克隆services用于后台任务 (Arc已在内部,无需重复包装)
     let redis = state.redis.clone();
-    let validator = state.validator.clone();
     let session_manager = state.session_manager.clone();
 
     // 克隆qr_id用于后续操作
@@ -73,7 +72,7 @@ pub async fn generate_qrcode(
 
     // 启动后台监控任务 (可取消)
     let monitor_task = tokio::spawn(async move {
-        monitor_login(qr_id_for_task, ws_stream, app, redis, validator).await;
+        monitor_login(qr_id_for_task, ws_stream, app, redis).await;
     });
 
     // 注册到会话管理器 (自动取消旧任务)
@@ -92,12 +91,13 @@ pub async fn generate_qrcode(
 ///
 /// 监听WebSocket消息流,处理状态变化并推送Event到前端
 /// 支持任务取消 - 当SessionManager取消旧会话时,此任务会自动终止
+///
+/// 注: WebSocket服务已通过VIP API验证UID,无需二次验证
 async fn monitor_login(
     qr_id: String,
     ws_stream: crate::services::weibo_api::WsStream,
     app: AppHandle,
     redis: Arc<crate::services::RedisService>,
-    validator: Arc<crate::services::ValidationService>,
 ) {
     use crate::services::weibo_api::WsEvent;
     use tokio_tungstenite::tungstenite::Message;
@@ -146,36 +146,23 @@ async fn monitor_login(
                     QrCodeStatus::Confirmed => {
                         tracing::debug!(二维码ID = %qr_id, "处理Confirmed状态");
                         if let (Some(uid), Some(cookies), Some(screen_name)) = (uid_opt, cookies_opt, screen_name_opt) {
-                            // 验证cookies
-                            match validator.validate_cookies(&cookies).await {
-                                Ok((validated_uid, _validated_screen_name)) => {
-                                    if validated_uid != uid {
-                                        emit_error(&app, &qr_id, "ValidationError", format!("UID不匹配: 期望 {}, 实际 {}", uid, validated_uid));
-                                        break;
-                                    }
+                            // WebSocket已经通过VIP API验证,直接使用返回的UID
+                            // 不需要二次验证 - VIP API是唯一可信的数据源
+                            let cookies_data = CookiesData::new(uid.clone(), cookies)
+                                .with_screen_name(screen_name);
 
-                                    // 构建并保存CookiesData
-                                    let cookies_data = CookiesData::new(validated_uid.clone(), cookies)
-                                        .with_screen_name(screen_name);
-
-                                    if let Err(e) = redis.save_cookies(&cookies_data).await {
-                                        tracing::error!(二维码ID = %qr_id, 错误 = ?e, "保存cookies失败");
-                                        emit_error(&app, &qr_id, "StorageError", format!("保存Cookies失败: {}", e));
-                                        break;
-                                    }
-
-                                    tracing::info!(二维码ID = %qr_id, uid = %validated_uid, "Cookies已保存");
-
-                                    // 推送confirmed事件
-                                    let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
-                                    let _ = app.emit_all("login_status_update", event);
-                                    tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
-                                }
-                                Err(e) => {
-                                    tracing::error!(二维码ID = %qr_id, 错误 = ?e, "Cookies验证失败");
-                                    emit_error(&app, &qr_id, "ValidationError", format!("Cookies验证失败: {}", e));
-                                }
+                            if let Err(e) = redis.save_cookies(&cookies_data).await {
+                                tracing::error!(二维码ID = %qr_id, 错误 = ?e, "保存cookies失败");
+                                emit_error(&app, &qr_id, "StorageError", format!("保存Cookies失败: {}", e));
+                                break;
                             }
+
+                            tracing::info!(二维码ID = %qr_id, uid = %uid, "Cookies已保存");
+
+                            // 推送confirmed事件
+                            let event = LoginStatusEvent::new(qr_id.clone(), QrCodeStatus::Confirmed, Some(cookies_data));
+                            let _ = app.emit_all("login_status_update", event);
+                            tracing::debug!(二维码ID = %qr_id, "Confirmed事件已发送至前端");
                         }
                         break;
                     }
