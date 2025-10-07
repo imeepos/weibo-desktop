@@ -80,6 +80,9 @@ regex = "1.10"
 # 系统目录路径: 获取配置目录等系统路径 (Tauri 2.x中替代 tauri::api::path)
 dirs = "5.0"
 
+# 随机数生成: 随机延迟,防反爬
+rand = "0.8"
+
 # 库配置: 支持集成测试
 [lib]
 name = "weibo_login"

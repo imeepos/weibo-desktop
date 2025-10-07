@@ -6,6 +6,7 @@
 /// - dependency_commands: 依赖检测和安装
 /// - playwright_commands: Playwright服务管理
 /// - redis_commands: Redis连接测试
+/// - crawl_commands: 微博爬取任务管理 (003功能)
 
 pub mod cookies_commands;
 pub mod dependency_commands;
@@ -13,3 +14,6 @@ pub mod log_commands;
 pub mod playwright_commands;
 pub mod qrcode_commands;
 pub mod redis_commands;
+
+// 003-爬取任务命令
+pub mod crawl_commands;

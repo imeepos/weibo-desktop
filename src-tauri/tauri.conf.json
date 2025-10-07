@@ -29,7 +29,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "identifier": "com.codeartisan.weibologin"
+    "targets": "all"
   }
 }

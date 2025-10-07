@@ -82,6 +82,10 @@ pub mod session_manager;
 pub mod validation_service;
 pub mod weibo_api;
 
+// 003-爬取任务服务
+pub mod crawl_service;
+pub mod time_shard_service;
+
 // 重导出常用类型,简化外部引用
 #[cfg(feature = "rust-browser-poc")]
 pub use browser_service_poc::BrowserService as BrowserServicePoc;
@@ -97,3 +101,7 @@ pub use redis_service::RedisService;
 pub use session_manager::SessionManager;
 pub use validation_service::ValidationService;
 pub use weibo_api::WeiboApiClient;
+
+// 003-爬取任务服务导出
+pub use crawl_service::CrawlService;
+pub use time_shard_service::TimeShardService;
