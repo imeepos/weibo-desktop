@@ -1,0 +1,309 @@
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { Search, Filter, RefreshCw, Plus, Play, Pause, Trash2 } from 'lucide-react';
+import { CrawlTaskSummarySimple as CrawlTaskSummary, CrawlStatusSimple as CrawlStatus } from '../types/crawl_simple';
+import { handleTauriError } from '../utils/errorHandler';
+import ErrorDisplay from './ErrorDisplay';
+import { EmptyState } from './EmptyState';
+
+interface CrawlTaskListSimpleProps {
+  onTaskSelect?: (taskId: string) => void;
+  refreshTrigger?: number;
+}
+
+// 简化的状态配置（5种状态，移除复杂的时间分片状态）
+const statusConfig: Record<CrawlStatus, { label: string; color: string; animated: boolean }> = {
+  Created: { label: '已创建', color: 'bg-gray-100 text-gray-700', animated: false },
+  Crawling: { label: '爬取中', color: 'bg-blue-100 text-blue-700', animated: true },
+  Completed: { label: '已完成', color: 'bg-green-100 text-green-700', animated: false },
+  Paused: { label: '已暂停', color: 'bg-yellow-100 text-yellow-700', animated: false },
+  Failed: { label: '失败', color: 'bg-red-100 text-red-700', animated: false },
+};
+
+const filterOptions: Array<{ value: CrawlStatus | 'All'; label: string }> = [
+  { value: 'All', label: '全部' },
+  { value: 'Created', label: '已创建' },
+  { value: 'Crawling', label: '爬取中' },
+  { value: 'Completed', label: '已完成' },
+  { value: 'Paused', label: '已暂停' },
+  { value: 'Failed', label: '失败' },
+];
+
+export const CrawlTaskListSimple = ({
+  onTaskSelect,
+  refreshTrigger
+}: CrawlTaskListSimpleProps) => {
+  const [tasks, setTasks] = useState<CrawlTaskSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<CrawlStatus | 'All'>('All');
+  const [searchKeyword, setSearchKeyword] = useState('');
+
+  // 简化的加载任务函数
+  const loadTasks = async () => {
+    try {
+      console.log('[CrawlTaskListSimple] 开始加载任务列表...');
+      setIsLoading(true);
+      setError(null);
+
+      const status = filterStatus === 'All' ? null : filterStatus;
+
+      const response = await invoke<{
+        tasks: CrawlTaskSummary[],
+        total: number
+      }>('list_simple_crawl_tasks', {
+        request: {
+          status,
+          sortBy: 'updatedAt',
+          sortOrder: 'desc',
+          limit: 50,
+          offset: 0,
+        },
+      });
+
+      console.log('[CrawlTaskListSimple] 收到响应:', response);
+
+      setTasks(response.tasks || []);
+      console.log('[CrawlTaskListSimple] 任务列表设置成功，任务数:', response.tasks?.length || 0);
+
+    } catch (err) {
+      console.error('[CrawlTaskListSimple] 加载任务列表失败:', err);
+      const errorMessage = handleTauriError(err);
+      setError(errorMessage);
+      setTasks([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTasks();
+  }, [filterStatus, refreshTrigger]);
+
+  // 简化的操作函数
+  const handleStartTask = async (taskId: string) => {
+    try {
+      await invoke('start_simple_crawl', { taskId });
+      console.log('[CrawlTaskListSimple] 任务启动成功:', taskId);
+      // 短暂延迟后刷新列表
+      setTimeout(() => loadTasks(), 1000);
+    } catch (err) {
+      console.error('[CrawlTaskListSimple] 启动任务失败:', err);
+      setError(handleTauriError(err));
+    }
+  };
+
+  const handlePauseTask = async (taskId: string) => {
+    try {
+      await invoke('pause_simple_crawl', { taskId });
+      console.log('[CrawlTaskListSimple] 任务暂停成功:', taskId);
+      setTimeout(() => loadTasks(), 1000);
+    } catch (err) {
+      console.error('[CrawlTaskListSimple] 暂停任务失败:', err);
+      setError(handleTauriError(err));
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('确定要删除这个任务吗？此操作不可撤销。')) {
+      return;
+    }
+
+    try {
+      await invoke('delete_simple_crawl_task', { taskId });
+      console.log('[CrawlTaskListSimple] 任务删除成功:', taskId);
+      setTimeout(() => loadTasks(), 1000);
+    } catch (err) {
+      console.error('[CrawlTaskListSimple] 删除任务失败:', err);
+      setError(handleTauriError(err));
+    }
+  };
+
+  const filteredTasks = searchKeyword
+    ? tasks.filter(task =>
+        task.keyword.toLowerCase().includes(searchKeyword.toLowerCase())
+      )
+    : tasks;
+
+  const formatDateTime = (isoString: string): string => {
+    return new Date(isoString).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const StatusBadge = ({ status }: { status: CrawlStatus }) => {
+    const config = statusConfig[status];
+    return (
+      <span
+        className={`px-3 py-1 rounded-full text-sm font-medium ${config.color} ${
+          config.animated ? 'animate-pulse' : ''
+        }`}
+      >
+        {config.label}
+      </span>
+    );
+  };
+
+  const TaskActions = ({ task }: { task: CrawlTaskSummary }) => {
+    if (task.status === 'Created' || task.status === 'Paused') {
+      return (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleStartTask(task.id);
+          }}
+          className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          title="开始爬取"
+        >
+          <Play className="w-4 h-4" />
+        </button>
+      );
+    }
+
+    if (task.status === 'Crawling') {
+      return (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePauseTask(task.id);
+          }}
+          className="p-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+          title="暂停爬取"
+        >
+          <Pause className="w-4 h-4" />
+        </button>
+      );
+    }
+
+    return null;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+        <span className="ml-3 text-gray-600">加载任务列表...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorDisplay
+        error={error}
+        onRetry={loadTasks}
+        showRetryButton={true}
+        className="m-4"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 搜索和过滤栏 */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="搜索关键字..."
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Filter className="w-5 h-5 text-gray-400" />
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as CrawlStatus | 'All')}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {filterOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={loadTasks}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          刷新
+        </button>
+      </div>
+
+      {/* 任务列表 */}
+      {filteredTasks.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title={searchKeyword ? '未找到匹配的任务' : '暂无爬取任务'}
+          description={searchKeyword ? '请尝试其他关键字' : '创建第一个爬取任务开始使用'}
+        />
+      ) : (
+        <div className="grid gap-4">
+          {filteredTasks.map(task => (
+            <div
+              key={task.id}
+              onClick={() => onTaskSelect?.(task.id)}
+              className="bg-white border border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="text-lg font-semibold text-gray-900 flex-1">
+                  {task.keyword}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={task.status} />
+                  <TaskActions task={task} />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteTask(task.id);
+                    }}
+                    className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    title="删除任务"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">已爬取:</span>
+                  <span className="ml-2 font-medium text-gray-900">
+                    {task.crawledCount.toLocaleString()} 条
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500">创建时间:</span>
+                  <span className="ml-2 text-gray-700">
+                    {formatDateTime(task.createdAt)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-2 text-sm text-gray-500">
+                最后更新: {formatDateTime(task.updatedAt)}
+              </div>
+
+              {task.failureReason && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                  失败原因: {task.failureReason}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
