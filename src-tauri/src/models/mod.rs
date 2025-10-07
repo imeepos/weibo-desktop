@@ -20,6 +20,7 @@ pub mod errors;
 pub mod events;
 pub mod frontend_log;
 pub mod login_session;
+pub mod redis_config;
 
 // 重导出常用类型,简化外部引用
 pub use cookies_data::CookiesData;
@@ -29,6 +30,7 @@ pub use dependency::{
 };
 pub use errors::{ApiError, StorageError, ValidationError};
 pub use login_session::{LoginSession, QrCodeStatus};
+pub use redis_config::{RedisConfig, RedisConfigError};
 
 /// 解析微博API返回码为二维码状态
 ///
