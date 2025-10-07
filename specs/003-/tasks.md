@@ -60,8 +60,8 @@ Phase 3.5: Polish (优化和单元测试)
 - 验证依赖已存在: `tokio`, `serde`, `redis`, `deadpool-redis`, `tracing`
 
 **完成标准**:
-- [ ] Cargo.toml包含所有必需依赖
-- [ ] `cargo build`成功
+- [X] Cargo.toml包含所有必需依赖
+- [X] `cargo build`成功
 
 ---
 
@@ -76,8 +76,8 @@ Phase 3.5: Polish (优化和单元测试)
 - 在`utils/mod.rs`中添加time_utils导出
 
 **完成标准**:
-- [ ] 模块结构正确
-- [ ] 编译无错误
+- [X] 模块结构正确
+- [X] 编译无错误
 
 ---
 
@@ -95,8 +95,8 @@ Phase 3.5: Polish (优化和单元测试)
   - CrawlErrorEvent
 
 **完成标准**:
-- [ ] 所有接口与data-model.md一致
-- [ ] TypeScript编译无错误
+- [X] 所有接口与data-model.md一致
+- [X] TypeScript编译无错误
 
 ---
 

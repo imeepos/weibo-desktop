@@ -96,3 +96,22 @@ custom-protocol = ["tauri/custom-protocol"]
 # 浏览器后端选择
 playwright-server = []  # 使用外部 Playwright Server (稳定,默认)
 rust-browser-poc = ["chromiumoxide", "base64", "once_cell"]  # 使用 Rust POC (实验性)
+
+# 契约测试
+[[test]]
+name = "contract_create_crawl_task"
+path = "../tests/contract/test_create_crawl_task.rs"
+
+[[test]]
+name = "contract_tests"
+path = "../tests/contract/test_export_crawl_data.rs"
+
+[[test]]
+name = "contract_get_crawl_progress"
+path = "../tests/contract/test_get_crawl_progress.rs"
+
+# 集成测试
+[[test]]
+name = "integration"
+path = "../tests/integration/mod.rs"
+harness = true

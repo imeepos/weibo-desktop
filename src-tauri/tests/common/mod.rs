@@ -126,6 +126,25 @@ impl MockRedisService {
         self.hash_storage.lock().await.clear();
     }
 
+    /// KEYS操作 (获取匹配的键列表)
+    pub async fn keys(&self, pattern: &str) -> Result<Vec<String>, String> {
+        if *self.should_fail.lock().await {
+            return Err("Redis连接失败".to_string());
+        }
+
+        let hash_storage = self.hash_storage.lock().await;
+
+        // 简单的模式匹配: "crawl:task:*"
+        let prefix = pattern.trim_end_matches('*');
+        let keys: Vec<String> = hash_storage
+            .keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect();
+
+        Ok(keys)
+    }
+
     /// 插入损坏数据 (用于测试反序列化错误)
     pub async fn insert_corrupted_data(&self, key: &str) -> Result<(), String> {
         if *self.should_fail.lock().await {

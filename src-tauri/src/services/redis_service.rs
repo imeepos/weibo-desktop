@@ -2,7 +2,7 @@ use deadpool_redis::{Config, Pool, Runtime};
 use redis::AsyncCommands;
 use std::collections::HashMap;
 
-use crate::models::{CookiesData, StorageError};
+use crate::models::{CookiesData, StorageError, CrawlTask, CrawlCheckpoint, WeiboPost};
 
 /// Redis服务
 ///
@@ -266,6 +266,74 @@ impl RedisService {
             "从Redis列出所有UID"
         );
         Ok(uids)
+    }
+
+    // ==================== 爬取任务存储方法 (Phase 3.3 - T023) ====================
+
+    /// 保存爬取任务到Redis
+    pub async fn save_crawl_task(&self, _task: &CrawlTask) -> Result<(), StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 加载爬取任务
+    pub async fn load_task(&self, _task_id: &str) -> Result<CrawlTask, StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 列出所有任务
+    pub async fn list_all_tasks(&self) -> Result<Vec<CrawlTask>, StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 保存检查点
+    pub async fn save_checkpoint(&self, _checkpoint: &CrawlCheckpoint) -> Result<(), StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 加载检查点
+    pub async fn load_checkpoint(
+        &self,
+        _task_id: &str,
+    ) -> Result<Option<CrawlCheckpoint>, StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 批量保存帖子
+    pub async fn save_posts(
+        &self,
+        _task_id: &str,
+        _posts: &[WeiboPost],
+    ) -> Result<(), StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 按时间范围查询帖子
+    pub async fn get_posts_by_time_range(
+        &self,
+        _task_id: &str,
+        _start: chrono::DateTime<chrono::Utc>,
+        _end: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<WeiboPost>, StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 检查帖子是否已存在
+    pub async fn check_post_exists(
+        &self,
+        _task_id: &str,
+        _post_id: &str,
+    ) -> Result<bool, StorageError> {
+        todo!("Phase 3.3 - T023实现")
+    }
+
+    /// 获取Redis连接 (测试辅助方法)
+    pub async fn get_connection(
+        &self,
+    ) -> Result<deadpool_redis::Connection, StorageError> {
+        self.pool
+            .get()
+            .await
+            .map_err(|e| StorageError::RedisConnectionFailed(e.to_string()))
     }
 }
 
