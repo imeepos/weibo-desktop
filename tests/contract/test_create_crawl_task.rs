@@ -127,8 +127,9 @@ async fn test_cookies_expired() {
     // 验证应失败
     let result = validate_cookies(&redis_service, test_uid).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Cookies可能已过期"));
-    assert!(result.as_ref().unwrap_err().contains("8天"));
+    let error_msg = result.unwrap_err();
+    assert!(error_msg.contains("Cookies可能已过期"));
+    assert!(error_msg.contains("8天"));
 
     // 清理
     redis_service.delete_cookies(test_uid).await.unwrap();
