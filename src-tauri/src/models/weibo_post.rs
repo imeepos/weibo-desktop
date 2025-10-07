@@ -21,28 +21,51 @@ pub struct WeiboPost {
 impl WeiboPost {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        _id: String,
-        _task_id: String,
-        _text: String,
-        _created_at: DateTime<Utc>,
-        _author_uid: String,
-        _author_screen_name: String,
-        _reposts_count: u64,
-        _comments_count: u64,
-        _attitudes_count: u64,
+        id: String,
+        task_id: String,
+        text: String,
+        created_at: DateTime<Utc>,
+        author_uid: String,
+        author_screen_name: String,
+        reposts_count: u64,
+        comments_count: u64,
+        attitudes_count: u64,
     ) -> Self {
-        todo!("Phase 3.3 - T019实现")
+        Self {
+            id,
+            task_id,
+            text,
+            created_at,
+            author_uid,
+            author_screen_name,
+            reposts_count,
+            comments_count,
+            attitudes_count,
+            crawled_at: Utc::now(),
+        }
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        todo!("Phase 3.3 - T019实现")
+        serde_json::to_string(self)
     }
 
-    pub fn from_json(_json: &str) -> Result<Self, serde_json::Error> {
-        todo!("Phase 3.3 - T019实现")
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        todo!("Phase 3.3 - T019实现")
+        if self.id.trim().is_empty() {
+            return Err("帖子ID不能为空".to_string());
+        }
+
+        if self.author_uid.trim().is_empty() {
+            return Err("作者UID不能为空".to_string());
+        }
+
+        if self.created_at > self.crawled_at {
+            return Err("帖子发布时间不能晚于爬取时间".to_string());
+        }
+
+        Ok(())
     }
 }
