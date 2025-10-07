@@ -30,6 +30,8 @@ serde_json = "1.0"
 
 # 异步运行时: tokio作为async/await的基础
 tokio = { version = "1.35", features = ["full"] }
+# Tokio工具: CancellationToken用于任务取消
+tokio-util = "0.7"
 
 # HTTP客户端: 调用微博API,自动管理cookies (使用rustls避免系统OpenSSL依赖)
 reqwest = { version = "0.11", default-features = false, features = ["json", "cookies", "rustls-tls", "blocking"] }

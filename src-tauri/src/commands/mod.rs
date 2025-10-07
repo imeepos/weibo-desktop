@@ -15,5 +15,5 @@ pub mod playwright_commands;
 pub mod qrcode_commands;
 pub mod redis_commands;
 
-// 003-爬取任务命令
-pub mod crawl_commands;
+// 003-爬取任务命令 (T026将实现)
+// pub mod crawl_commands;
