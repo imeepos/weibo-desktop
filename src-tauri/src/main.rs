@@ -86,6 +86,20 @@ fn main() {
             commands::system_commands::open_file_location,
         ])
         .setup(move |_app| {
+            // 初始化数据库
+            tracing::info!("正在初始化PostgreSQL数据库...");
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(async {
+                    if let Err(e) = database::init_database().await {
+                        tracing::error!("数据库初始化失败: {}", e);
+                        return Err(Box::new(e) as Box<dyn std::error::Error>);
+                    }
+                    tracing::info!("PostgreSQL数据库初始化成功");
+                    Ok(())
+                })
+                .map_err(|e| format!("数据库初始化失败: {}", e))?;
+
             // 浏览器后端选择
             let backend =
                 std::env::var("BROWSER_BACKEND").unwrap_or_else(|_| "playwright".to_string());
