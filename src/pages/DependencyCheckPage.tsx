@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { CheckCircle, XCircle, AlertTriangle, Settings } from 'lucide-react';
@@ -10,10 +9,8 @@ import {
   DependencyCheckProgressEvent
 } from '../types/dependency';
 import { INSTALL_GUIDES } from '../constants/installGuides';
-import { BUTTON } from '../constants/ui';
 
 export const DependencyCheckPage = () => {
-  const navigate = useNavigate();
 
   const [isChecking, setIsChecking] = useState(false);
   const [checkResults, setCheckResults] = useState<DependencyCheckResult[]>([]);
@@ -26,7 +23,7 @@ export const DependencyCheckPage = () => {
     status: ''
   });
 
-  const [installing, setInstalling] = useState(false);
+  const [installing] = useState(false);
   const [installationProgress, setInstallationProgress] = useState<InstallationProgressEvent>({
     task_id: '',
     dependency_id: '',
@@ -267,8 +264,8 @@ export const DependencyCheckPage = () => {
                       <li key={dep.dependency_id} className="flex items-center justify-between p-3 bg-green-50 rounded">
                         <div>
                           <span className="font-semibold">{dep.dependency_id}</span>
-                          {dep.current_version && (
-                            <span className="text-sm text-gray-600 ml-2">v{dep.current_version}</span>
+                          {dep.detected_version && (
+                            <span className="text-sm text-gray-600 ml-2">v{dep.detected_version}</span>
                           )}
                         </div>
                         <span className="text-green-600">✓</span>

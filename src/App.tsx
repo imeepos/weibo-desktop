@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { CookiesListPage } from './pages/CookiesListPage';
 import { PlaywrightServicePage } from './pages/PlaywrightServicePage';
 import { RedisConfigPage } from './pages/RedisConfigPage';
+import { CrawlPage } from './pages/CrawlPage';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
             <Route path="/dependency" element={<DependencyCheckPage />} />
             <Route path="/playwright" element={<PlaywrightServicePage />} />
             <Route path="/redis" element={<RedisConfigPage />} />
+            <Route path="/crawl" element={<CrawlPage />} />
           </Routes>
         </Layout>
       </BrowserRouter>

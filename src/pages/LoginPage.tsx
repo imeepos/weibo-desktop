@@ -182,9 +182,10 @@ export const LoginPage = () => {
       const statusEvent = event.payload;
 
       if (statusEvent.qr_refreshed && statusEvent.qr_image) {
+        const qrImage = statusEvent.qr_image;
         setQrData(prev => prev ? {
           ...prev,
-          qr_image: statusEvent.qr_image,
+          qr_image: qrImage,
           expires_at: new Date(Date.now() + TIMING.QR_EXPIRY_MS).toISOString(),
           expires_in: 180,
         } : null);
